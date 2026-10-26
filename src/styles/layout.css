@@ -1,0 +1,295 @@
+/* Estrutura: menu lateral, área principal e comportamento no celular. */
+
+.app {
+  min-height: 100vh;
+}
+
+/* ------------------------------------------------------------ Menu lateral */
+
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: var(--sidebar-width);
+  display: flex;
+  flex-direction: column;
+  background: var(--brown-900);
+  color: var(--text-on-dark);
+  padding: var(--space-6) var(--space-4) var(--space-4);
+  overflow-y: auto;
+  z-index: 30;
+}
+
+.sidebar__brand {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 0 var(--space-3) var(--space-6);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid rgb(243 235 223 / 0.08);
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.brand:hover { color: inherit; }
+
+.brand__logo {
+  display: block;
+  max-width: 180px;
+  max-height: 44px;
+  object-fit: contain;
+}
+
+.brand__name {
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+  color: var(--text-on-dark);
+}
+
+.brand__product {
+  font-size: var(--text-xs);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--gold-300);
+}
+
+.sidebar .sidebar__close {
+  display: none;
+  color: var(--text-on-dark-2);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav__item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 9px var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--text-on-dark-2);
+  text-decoration: none;
+  font-size: var(--text-base);
+  transition: background 0.15s var(--ease), color 0.15s var(--ease);
+}
+
+.nav__item:hover {
+  background: rgb(243 235 223 / 0.06);
+  color: var(--text-on-dark);
+}
+
+.nav__item.is-active {
+  background: rgb(243 235 223 / 0.09);
+  color: var(--cream-0);
+}
+
+.nav__item.is-active::before {
+  content: "";
+  position: absolute;
+  left: -16px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--gold-500);
+}
+
+.nav__item .icon { flex: none; opacity: 0.9; }
+
+.nav__label { flex: 1; }
+
+.nav__count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+  background: rgb(243 235 223 / 0.12);
+  color: var(--text-on-dark);
+}
+
+.nav__count--alert {
+  background: #8f3d2f;
+  color: #fbeee9;
+}
+
+.sidebar__footer {
+  margin-top: auto;
+  padding-top: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.profile {
+  padding: var(--space-4) var(--space-3) var(--space-2);
+  border-top: 1px solid rgb(243 235 223 / 0.08);
+}
+
+.profile__label {
+  display: block;
+  font-size: var(--text-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-on-dark-2);
+  margin-bottom: var(--space-2);
+}
+
+.profile__switch {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius);
+  background: rgb(0 0 0 / 0.18);
+}
+
+.profile__option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-on-dark-2);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.profile__option span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.profile__option.is-active {
+  background: var(--cream-50);
+  color: var(--brown-900);
+}
+
+.profile__note {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin-top: var(--space-3);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-on-dark-2);
+}
+
+.profile__note .icon { flex: none; margin-top: 2px; }
+
+/* ------------------------------------------------------------ Área principal */
+
+.main-area {
+  margin-left: var(--sidebar-width);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: none;
+}
+
+.view {
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-10) var(--space-12);
+  outline: none;
+}
+
+.env-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  padding: 8px var(--space-10);
+  border-bottom: 1px solid var(--line);
+  background: var(--cream-50);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.env-banner strong { color: var(--brown-800); font-weight: 600; }
+
+.env-banner__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gold-500);
+}
+
+.env-banner__sep { color: var(--text-3); }
+
+.env-banner__link {
+  margin-left: auto;
+  font-size: var(--text-sm);
+}
+
+.scrim { display: none; }
+
+/* ------------------------------------------------------------ Celular e tablet */
+
+@media (max-width: 960px) {
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.25s var(--ease);
+  }
+
+  .nav-open .sidebar { transform: none; box-shadow: var(--shadow-lg); }
+
+  .sidebar .sidebar__close { display: inline-flex; }
+
+  .nav-open .scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgb(34 23 15 / 0.4);
+    z-index: 25;
+  }
+
+  .main-area { margin-left: 0; }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    background: var(--brown-900);
+    color: var(--text-on-dark);
+  }
+
+  .topbar .btn--ghost { color: var(--text-on-dark); }
+  .topbar .btn--ghost:hover { background: rgb(243 235 223 / 0.08); }
+
+  .topbar__title {
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+  }
+
+  .env-banner { padding: 8px var(--space-4); }
+  .view { padding: var(--space-6) var(--space-4) var(--space-10); }
+}
+
+@media (max-width: 600px) {
+  .env-banner__hide-sm { display: none; }
+}

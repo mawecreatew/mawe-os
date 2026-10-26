@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#2a1d16" />
+    <title>Mawe OS</title>
+    <link rel="stylesheet" href="src/styles/tokens.css" />
+    <link rel="stylesheet" href="src/styles/base.css" />
+    <link rel="stylesheet" href="src/styles/layout.css" />
+    <link rel="stylesheet" href="src/styles/components.css" />
+    <link rel="stylesheet" href="src/styles/views.css" />
+    <script type="module" src="build/main.js"></script>
+  </head>
+  <body class="is-loading">
+    <a class="skip-link" href="#view">Pular para o conteúdo</a>
+    <div class="app">
+      <aside class="sidebar" id="sidebar" aria-label="Menu"></aside>
+      <div class="scrim" data-action="nav:close" aria-hidden="true"></div>
+      <div class="main-area">
+        <header class="topbar">
+          <button type="button" class="btn btn--ghost btn--icon" data-action="nav:open" aria-label="Abrir menu">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+          </button>
+          <span class="topbar__title">Mawe OS</span>
+        </header>
+        <div id="banner"></div>
+        <main class="view" id="view" tabindex="-1">
+          <p class="loading">Carregando…</p>
+        </main>
+      </div>
+    </div>
+    <noscript>O Mawe OS precisa de JavaScript ativado no navegador.</noscript>
+  </body>
+</html>

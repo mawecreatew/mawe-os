@@ -1,0 +1,89 @@
+/*
+ * Tokens de design da Mawe Create.
+ * Altere as cores e fontes aqui — o restante do sistema usa estas variáveis.
+ */
+:root {
+  /* Marrom (cor principal) */
+  --brown-950: #22170f;
+  --brown-900: #2a1d16;
+  --brown-800: #3a2a20;
+  --brown-700: #4d392b;
+  --brown-600: #6a503d;
+  --brown-500: #8a6c56;
+  --brown-300: #b9a08c;
+
+  /* Creme e neutros claros */
+  --cream-0: #fffdf9;
+  --cream-50: #fbf8f2;
+  --cream-100: #f5efe6;
+  --cream-200: #ece3d6;
+  --cream-300: #ddd1bf;
+
+  /* Dourado discreto — usar com moderação, só em detalhes */
+  --gold-600: #8c6a37;
+  --gold-500: #b08a52;
+  --gold-300: #d8c39c;
+  --gold-100: #f2e8d5;
+
+  /* Texto */
+  --text: #2a1d16;
+  --text-2: #5c4a3d;
+  --text-3: #87735f;
+  --text-on-dark: #f3ebdf;
+  --text-on-dark-2: #bfae9c;
+
+  /* Superfícies */
+  --bg: var(--cream-100);
+  --surface: var(--cream-0);
+  --surface-2: var(--cream-50);
+  --line: #e5dccd;
+  --line-strong: var(--cream-300);
+
+  /* Tons de status (suaves, coerentes com a paleta) */
+  --neutral-fg: #5c4a3d;  --neutral-bg: #efe8dd;
+  --info-fg: #3d566c;     --info-bg: #e5ecf0;
+  --progress-fg: #5a4330; --progress-bg: #ede2d3;
+  --warning-fg: #855610;  --warning-bg: #f6e9cf;
+  --success-fg: #3c5f40;  --success-bg: #e3ecdf;
+  --danger-fg: #983a2c;   --danger-bg: #f6e1dc;
+  --accent-fg: #7a5a28;   --accent-bg: var(--gold-100);
+
+  /* Tipografia */
+  --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, "URW Palladio L", "Book Antiqua", Georgia, serif;
+  --font-body: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Code", Menlo, Consolas, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.875rem;
+  --text-3xl: 2.25rem;
+
+  /* Espaçamentos */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Formas e sombras */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+  --shadow-sm: 0 1px 2px rgb(42 29 22 / 0.05);
+  --shadow: 0 1px 2px rgb(42 29 22 / 0.04), 0 4px 14px rgb(42 29 22 / 0.05);
+  --shadow-lg: 0 10px 40px rgb(34 23 15 / 0.18);
+
+  --sidebar-width: 264px;
+  --content-max: 1320px;
+  --focus-ring: 0 0 0 3px rgb(176 138 82 / 0.35);
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
