@@ -22,7 +22,7 @@ cadastros públicos desligados.
 3. Se o repositório `mawe-os` não aparecer, clique em **Configure Netlify on GitHub** e
    dê acesso a ele.
 4. Escolha **mawecreatew/mawe-os**.
-5. Em **Branch to deploy**, escolha `feat/mawe-os-v0.1` (até essa versão ir para a `main`).
+5. Em **Branch to deploy**, deixe `main` (a versão oficial do sistema).
 6. **Project name**: `mawe-os` (o link será `mawe-os.netlify.app`; se o nome estiver em
    uso, escolha outro, como `mawe-create-os`).
 7. Os campos de build já vêm preenchidos pelo `netlify.toml`
@@ -31,7 +31,7 @@ cadastros públicos desligados.
 
 ## Atualizações
 
-Toda vez que uma alteração for enviada ao GitHub nessa branch, o Netlify publica a nova
+Toda vez que uma alteração for enviada à branch `main` no GitHub, o Netlify publica a nova
 versão sozinho em poucos minutos. Para ver o andamento: Netlify → seu projeto → **Deploys**.
 
 ## Se mudar de projeto no Supabase
