@@ -94,7 +94,7 @@ describe('dados compartilhados', () => {
     const maria = await Store.open({ source: new SupabaseDataSource(await loggedClient(...MARIA)), clock, initialDataset: 'empty', lockedUserId: 'maria' });
     assert.equal(maria.data.meta.dataset, 'empty');
     assert.equal(maria.data.tasks.length, 0);
-    await maria.apply((d, ctx) => createTask(d, { title: 'Tarefa compartilhada', description: '', assigneeId: 'wesley', priority: 'alta', status: 'a_fazer', dueDate: null, related: null }, ctx));
+    await maria.apply((d, ctx) => createTask(d, { title: 'Tarefa compartilhada', description: '', assigneeIds: ['wesley'], priority: 'alta', status: 'a_fazer', dueDate: null, related: null }, ctx));
 
     const wesley = await Store.open({ source: new SupabaseDataSource(await loggedClient(...WESLEY)), clock, initialDataset: 'empty', lockedUserId: 'wesley' });
     assert.equal(wesley.currentUser.id, 'wesley');
@@ -111,7 +111,7 @@ describe('dados compartilhados', () => {
   it('gravações simultâneas: a segunda é recusada e os dados são recarregados', async () => {
     const maria = await Store.open({ source: new SupabaseDataSource(await loggedClient(...MARIA)), clock, initialDataset: 'empty', lockedUserId: 'maria' });
     const wesley = await Store.open({ source: new SupabaseDataSource(await loggedClient(...WESLEY)), clock, initialDataset: 'empty', lockedUserId: 'wesley' });
-    const input = (title: string) => ({ title, description: '', assigneeId: 'maria', priority: 'media' as const, status: 'a_fazer' as const, dueDate: null, related: null });
+    const input = (title: string) => ({ title, description: '', assigneeIds: ['maria'], priority: 'media' as const, status: 'a_fazer' as const, dueDate: null, related: null });
     await maria.apply((d, ctx) => createTask(d, input('Primeira gravação'), ctx));
     await assert.rejects(() => wesley.apply((d, ctx) => createTask(d, input('Gravação atrasada'), ctx)), ConflictError);
     // Wesley agora vê o que a Maria salvou e pode refazer a ação

@@ -16,6 +16,7 @@ import {
   type ActionContext,
 } from '../src/domain/operations.ts';
 import { can } from '../src/domain/permissions.ts';
+import { addPerson, normalizeData, peopleNames, removePerson } from '../src/domain/people.ts';
 import {
   clientFinance,
   filterTasks,
@@ -47,12 +48,12 @@ describe('dados de demonstração', () => {
       opportunity: new Set(data.opportunities.map((o) => o.id)),
     };
     for (const t of data.tasks) {
-      assert.ok(ids.user.has(t.assigneeId), `responsável inválido em ${t.id}`);
+      assert.ok(t.assigneeIds.length > 0 && t.assigneeIds.every((id) => ids.user.has(id)), `responsável inválido em ${t.id}`);
       if (t.related) assert.ok(ids[t.related.type].has(t.related.id), `vínculo inválido em ${t.id}`);
     }
     for (const p of data.projects) {
       assert.ok(ids.client.has(p.clientId));
-      assert.ok(ids.user.has(p.ownerId));
+      assert.ok(p.ownerIds.length > 0 && p.ownerIds.every((id) => ids.user.has(id)));
     }
     for (const o of data.opportunities) if (o.clientId) assert.ok(ids.client.has(o.clientId));
     for (const d of data.decisions) if (d.projectId) assert.ok(ids.project.has(d.projectId));
@@ -91,7 +92,7 @@ describe('painel', () => {
     const list = todayPriorities(data, TODAY, 'maria');
     assert.ok(list.length > 0 && list.length <= 5);
     for (const t of list) {
-      assert.equal(t.assigneeId, 'maria');
+      assert.deepEqual(t.assigneeIds, ['maria']);
       assert.ok(t.dueDate! <= TODAY || t.priority === 'alta');
     }
   });
@@ -108,7 +109,7 @@ describe('painel', () => {
 
 describe('tarefas', () => {
   it('cria, conclui e reabre uma tarefa', () => {
-    const task = createTask(data, { title: '  Revisar textos  ', description: '', assigneeId: 'wesley', priority: 'media', status: 'a_fazer', dueDate: TODAY, related: null }, ctx);
+    const task = createTask(data, { title: '  Revisar textos  ', description: '', assigneeIds: ['wesley'], priority: 'media', status: 'a_fazer', dueDate: TODAY, related: null }, ctx);
     assert.equal(task.title, 'Revisar textos');
     assert.equal(task.createdBy, 'maria');
     toggleTaskDone(data, task.id, ctx);
@@ -122,7 +123,7 @@ describe('tarefas', () => {
   it('filtra por responsável e situação', () => {
     const wesleyLate = filterTasks(data.tasks, { assigneeId: 'wesley', status: 'atrasadas' }, TODAY);
     assert.ok(wesleyLate.length > 0);
-    assert.ok(wesleyLate.every((t) => t.assigneeId === 'wesley' && isOverdue(t, TODAY)));
+    assert.ok(wesleyLate.every((t) => t.assigneeIds.includes('wesley') && isOverdue(t, TODAY)));
     const done = filterTasks(data.tasks, { assigneeId: 'todos', status: 'concluidas' }, TODAY);
     assert.ok(done.every((t) => t.status === 'concluida'));
   });
@@ -198,14 +199,14 @@ describe('clientes e pagamentos', () => {
 
 describe('projetos', () => {
   it('novo projeto recebe etapas e checklist padrão', () => {
-    const p = createProject(data, { name: 'Loja', clientId: 'cli_lumen', ownerId: 'wesley', status: 'planejamento', startDate: TODAY, dueDate: addDays(TODAY, 30), description: '' }, ctx);
+    const p = createProject(data, { name: 'Loja', clientId: 'cli_lumen', ownerIds: ['wesley'], status: 'planejamento', startDate: TODAY, dueDate: addDays(TODAY, 30), description: '' }, ctx);
     assert.ok(p.stages.length >= 5);
     assert.ok(p.checklist.length >= 5);
     assert.equal(projectProgress(p), 0);
   });
 
   it('exige cliente existente', () => {
-    assert.throws(() => createProject(data, { name: 'X', clientId: 'nao_existe', ownerId: 'maria', status: 'planejamento', startDate: TODAY, dueDate: TODAY, description: '' }, ctx));
+    assert.throws(() => createProject(data, { name: 'X', clientId: 'nao_existe', ownerIds: ['maria'], status: 'planejamento', startDate: TODAY, dueDate: TODAY, description: '' }, ctx));
   });
 
   it('avança etapas em ciclo e atualiza o progresso', () => {
@@ -230,5 +231,53 @@ describe('permissões', () => {
     assert.ok(can(data.users[0], 'finance:view'));
     assert.ok(!can({ id: 'x', name: 'X', shortName: 'X', role: 'colaborador', title: '' }, 'finance:view'));
     assert.ok(!can(null, 'tasks:edit'));
+  });
+});
+
+describe('vários responsáveis', () => {
+  it('tarefa com os dois sócios aparece para cada um', () => {
+    const task = createTask(data, { title: 'Reunião com cliente', description: '', assigneeIds: ['maria', 'wesley'], priority: 'media', status: 'a_fazer', dueDate: addDays(TODAY, -1), related: null }, ctx);
+    assert.deepEqual(task.assigneeIds, ['maria', 'wesley']);
+    assert.ok(filterTasks(data.tasks, { assigneeId: 'maria', status: 'abertas' }, TODAY).includes(task));
+    assert.ok(filterTasks(data.tasks, { assigneeId: 'wesley', status: 'abertas' }, TODAY).includes(task));
+    assert.ok(overdueTasks(data, TODAY, 'wesley').includes(task));
+  });
+
+  it('cria pessoa nova pelo nome, sem duplicar', () => {
+    const task = createTask(data, { title: 'Fotos', description: '', assigneeIds: ['maria', 'nova:Ana Souza', 'nova:ana souza', 'maria'], priority: 'media', status: 'a_fazer', dueDate: null, related: null }, ctx);
+    const ana = data.users.find((u) => u.name === 'Ana Souza')!;
+    assert.ok(ana.guest);
+    assert.equal(ana.role, 'colaborador');
+    assert.equal(data.users.filter((u) => u.name.toLowerCase() === 'ana souza').length, 1);
+    assert.deepEqual(task.assigneeIds, ['maria', ana.id]);
+    assert.equal(peopleNames(data, task.assigneeIds), 'Maria Eduarda e Ana');
+  });
+
+  it('exige pelo menos um responsável', () => {
+    assert.throws(() => createTask(data, { title: 'Sem dono', description: '', assigneeIds: [], priority: 'media', status: 'a_fazer', dueDate: null, related: null }, ctx), /responsável/);
+    assert.throws(() => createTask(data, { title: 'Sem dono', description: '', assigneeIds: ['nao_existe'], priority: 'media', status: 'a_fazer', dueDate: null, related: null }, ctx), /responsável/);
+  });
+
+  it('remover pessoa extra devolve o trabalho a quem removeu', () => {
+    const ana = addPerson(data, 'Ana');
+    const solo = createTask(data, { title: 'Só Ana', description: '', assigneeIds: [ana.id], priority: 'media', status: 'a_fazer', dueDate: null, related: null }, ctx);
+    const shared = createTask(data, { title: 'Ana e Wesley', description: '', assigneeIds: [ana.id, 'wesley'], priority: 'media', status: 'a_fazer', dueDate: null, related: null }, ctx);
+    removePerson(data, ana.id, 'maria');
+    assert.deepEqual(solo.assigneeIds, ['maria']);
+    assert.deepEqual(shared.assigneeIds, ['wesley']);
+    assert.ok(!data.users.some((u) => u.id === ana.id));
+    assert.throws(() => removePerson(data, 'wesley', 'maria'));
+  });
+
+  it('converte dados antigos com um único responsável', () => {
+    const old = structuredClone(data) as unknown as { tasks: Record<string, unknown>[]; projects: Record<string, unknown>[]; opportunities: Record<string, unknown>[] };
+    for (const t of old.tasks) { t.assigneeId = 'wesley'; delete t.assigneeIds; }
+    for (const p of old.projects) { p.ownerId = 'maria'; delete p.ownerIds; }
+    for (const o of old.opportunities) { o.ownerId = 'maria'; delete o.ownerIds; }
+    const fixed = normalizeData(old as unknown as AppData);
+    assert.ok(fixed.tasks.every((t) => t.assigneeIds.length === 1 && t.assigneeIds[0] === 'wesley' && !('assigneeId' in t)));
+    assert.ok(fixed.projects.every((p) => p.ownerIds[0] === 'maria' && !('ownerId' in p)));
+    assert.ok(fixed.opportunities.every((o) => o.ownerIds[0] === 'maria'));
+    assert.deepEqual(normalizeData(structuredClone(fixed)), fixed);
   });
 });

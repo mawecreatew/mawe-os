@@ -4,11 +4,12 @@ import { cx, html } from '../core/html.ts';
 import { pluralize } from '../core/format.ts';
 import { PRIORITIES, TASK_STATUSES, labelOf, toneOf } from '../domain/labels.ts';
 import { createTask, deleteTask, toggleTaskDone, updateTask, type TaskInput } from '../domain/operations.ts';
-import { filterTasks, findUser, isOverdue, relatedLabel, type TaskFilters } from '../domain/selectors.ts';
+import { filterTasks, isOverdue, relatedLabel, type TaskFilters } from '../domain/selectors.ts';
 import type { Priority, RelatedRef, Task, TaskStatus } from '../domain/types.ts';
 import { allowed, requirePermission, rerender, store, today } from '../app/context.ts';
 import type { View } from '../app/view.ts';
-import { avatar, badge, button, demoTag, dueDate, emptyState, pageHeader, segmented } from '../ui/components.ts';
+import { badge, button, demoTag, dueDate, emptyState, pageHeader, people, segmented } from '../ui/components.ts';
+import { peopleField, readPeople } from '../ui/people-picker.ts';
 import { formActions, selectField, textareaField, textField } from '../ui/forms.ts';
 import { closeModal, confirmAction, openModal, toast } from '../ui/overlay.ts';
 
@@ -34,14 +35,14 @@ function parseRelated(value: string | null): RelatedRef | null {
 /** Abre o formulário de tarefa (nova ou edição). `defaults` preenche campos ao criar. */
 export function openTaskForm(task?: Task, defaults: Partial<TaskInput> = {}): void {
   const { data, currentUser } = store();
-  const v = task ?? { title: '', description: '', assigneeId: currentUser.id, priority: 'media', status: 'a_fazer', dueDate: today(), related: null, ...defaults };
+  const v = task ?? { title: '', description: '', assigneeIds: [currentUser.id], priority: 'media', status: 'a_fazer', dueDate: today(), related: null, ...defaults };
   openModal({
     title: task ? 'Editar tarefa' : 'Nova tarefa',
     body: html`
       <form class="form" data-form="task:save" data-id="${task?.id ?? ''}">
         ${textField({ name: 'title', label: 'Título', value: v.title, required: true, autofocus: true, placeholder: 'O que precisa ser feito?' })}
+        ${peopleField({ name: 'assigneeIds', label: 'Responsáveis', data, value: v.assigneeIds })}
         <div class="form-grid">
-          ${selectField({ name: 'assigneeId', label: 'Responsável', value: v.assigneeId, options: data.users.map((u) => ({ value: u.id, label: u.name })), required: true })}
           ${textField({ name: 'dueDate', label: 'Prazo', type: 'date', value: v.dueDate ?? '' })}
           ${selectField({ name: 'priority', label: 'Prioridade', value: v.priority, options: PRIORITIES })}
           ${selectField({ name: 'status', label: 'Situação', value: v.status, options: TASK_STATUSES })}
@@ -66,7 +67,7 @@ registerForms({
     const input: TaskInput = {
       title: values.text('title'),
       description: values.text('description'),
-      assigneeId: values.text('assigneeId'),
+      assigneeIds: readPeople(values, 'assigneeIds'),
       priority: values.text('priority') as Priority,
       status: values.text('status') as TaskStatus,
       dueDate: values.optional('dueDate'),
@@ -125,7 +126,7 @@ export const tasksView: View = {
   render: () => {
     const { data } = store();
     const t = today();
-    const scope = data.tasks.filter((x) => filters.assigneeId === 'todos' || x.assigneeId === filters.assigneeId);
+    const scope = data.tasks.filter((x) => filters.assigneeId === 'todos' || x.assigneeIds.includes(filters.assigneeId));
     const counts = {
       todas: scope.length,
       abertas: scope.filter((x) => x.status !== 'concluida').length,
@@ -147,7 +148,7 @@ export const tasksView: View = {
             <button type="button" class="link-button" data-action="task:edit" data-id="${task.id}">${task.title}</button>
             <span class="cell-sub">${related ? html`<a href="${related.href}">${related.label}</a>` : ''} ${demoTag(task)}</span>
           </td>
-          <td data-label="Responsável"><span class="person">${avatar(findUser(data, task.assigneeId))}<span>${findUser(data, task.assigneeId)?.shortName ?? '—'}</span></span></td>
+          <td data-label="Responsável">${people(data, task.assigneeIds)}</td>
           <td data-label="Prioridade">${badge(labelOf(PRIORITIES, task.priority), toneOf(PRIORITIES, task.priority))}</td>
           <td data-label="Prazo">${dueDate(task.dueDate, t, done)}</td>
           <td data-label="Situação">

@@ -9,6 +9,7 @@
 import { todayISO, type ISODate } from '../core/dates.ts';
 import { createId } from '../core/id.ts';
 import { labelOf, OPPORTUNITY_STAGES } from './labels.ts';
+import { resolvePeople } from './people.ts';
 import { DEFAULT_DELIVERY_CHECKLIST, DEFAULT_PRODUCTION_STAGES } from './templates.ts';
 import type {
   AgentId,
@@ -40,19 +41,31 @@ function mustFind<T extends { id: ID }>(list: T[], id: ID, what: string): T {
   return item;
 }
 
+/**
+ * Responsáveis vindos de um formulário: aceita IDs e pessoas novas
+ * (`nova:Nome`, que são cadastradas aqui). Precisa sobrar pelo menos uma.
+ */
+function responsibles(draft: AppData, values: readonly string[]): ID[] {
+  const ids = resolvePeople(draft, values);
+  if (!ids.length) throw new Error('Escolha pelo menos um responsável.');
+  return ids;
+}
+
 function checklistFrom(texts: string[]): ChecklistItem[] {
   return texts.map((text) => ({ id: createId('chk'), text, done: false }));
 }
 
 // ---------------------------------------------------------------- Tarefas
 
-export type TaskInput = Pick<Task, 'title' | 'description' | 'assigneeId' | 'priority' | 'status' | 'dueDate' | 'related'>;
+/** `assigneeIds` aceita IDs de pessoas e nomes novos no formato `nova:Nome`. */
+export type TaskInput = Pick<Task, 'title' | 'description' | 'assigneeIds' | 'priority' | 'status' | 'dueDate' | 'related'>;
 
 export function createTask(draft: AppData, input: TaskInput, ctx: ActionContext): Task {
   const task: Task = {
     id: createId('tsk'),
     ...input,
     title: input.title.trim(),
+    assigneeIds: responsibles(draft, input.assigneeIds),
     createdBy: ctx.userId,
     createdAt: ctx.now.toISOString(),
     completedAt: input.status === 'concluida' ? ctx.now.toISOString() : null,
@@ -66,6 +79,7 @@ export function updateTask(draft: AppData, id: ID, patch: Partial<TaskInput>, ct
   const wasDone = task.status === 'concluida';
   Object.assign(task, patch);
   if (patch.title !== undefined) task.title = patch.title.trim();
+  if (patch.assigneeIds !== undefined) task.assigneeIds = responsibles(draft, patch.assigneeIds);
   if (task.status === 'concluida' && !wasDone) task.completedAt = ctx.now.toISOString();
   if (task.status !== 'concluida') task.completedAt = null;
 }
@@ -96,7 +110,7 @@ export type OpportunityInput = Pick<
   | 'estimatedValue'
   | 'nextAction'
   | 'followUpDate'
-  | 'ownerId'
+  | 'ownerIds'
   | 'notes'
 >;
 
@@ -109,6 +123,7 @@ export function createOpportunity(draft: AppData, input: OpportunityInput, ctx: 
     id: createId('opp'),
     ...input,
     company: input.company.trim(),
+    ownerIds: responsibles(draft, input.ownerIds),
     history: [historyEntry(`Oportunidade cadastrada em "${labelOf(OPPORTUNITY_STAGES, input.stage)}".`, ctx)],
     clientId: null,
     createdAt: ctx.now.toISOString(),
@@ -121,6 +136,7 @@ export function updateOpportunity(draft: AppData, id: ID, patch: Partial<Opportu
   const opp = mustFind(draft.opportunities, id, 'Oportunidade');
   const previousStage = opp.stage;
   Object.assign(opp, patch);
+  if (patch.ownerIds !== undefined) opp.ownerIds = responsibles(draft, patch.ownerIds);
   if (patch.stage && patch.stage !== previousStage) {
     opp.history.push(
       historyEntry(
@@ -232,7 +248,7 @@ export function togglePendingItem(draft: AppData, clientId: ID, itemId: ID): voi
 
 export type ProjectInput = Pick<
   Project,
-  'name' | 'clientId' | 'ownerId' | 'status' | 'startDate' | 'dueDate' | 'description'
+  'name' | 'clientId' | 'ownerIds' | 'status' | 'startDate' | 'dueDate' | 'description'
 > & { links?: Partial<Project['links']> };
 
 export function createProject(draft: AppData, input: ProjectInput, ctx: ActionContext): Project {
@@ -241,7 +257,7 @@ export function createProject(draft: AppData, input: ProjectInput, ctx: ActionCo
     id: createId('prj'),
     name: input.name.trim(),
     clientId: input.clientId,
-    ownerId: input.ownerId,
+    ownerIds: responsibles(draft, input.ownerIds),
     status: input.status,
     startDate: input.startDate || todayISO(ctx.now),
     dueDate: input.dueDate,
@@ -259,6 +275,7 @@ export function updateProject(draft: AppData, id: ID, patch: Partial<ProjectInpu
   const project = mustFind(draft.projects, id, 'Projeto');
   const { links, ...rest } = patch;
   Object.assign(project, rest);
+  if (rest.ownerIds !== undefined) project.ownerIds = responsibles(draft, rest.ownerIds);
   if (links) project.links = { ...project.links, ...links };
 }
 

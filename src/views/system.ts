@@ -4,6 +4,7 @@ import { formatTimestamp, todayISO } from '../core/dates.ts';
 import { html, type SafeHtml } from '../core/html.ts';
 import { BRAND } from '../config/brand.ts';
 import { aiProvider } from '../agents/provider.ts';
+import { addPerson, removePerson } from '../domain/people.ts';
 import { ROLE_LABELS } from '../domain/permissions.ts';
 import { auth, brandAssets, requirePermission, store } from '../app/context.ts';
 import type { View } from '../app/view.ts';
@@ -24,9 +25,29 @@ registerForms({
     form.reset();
     toast('Senha alterada. Use a nova senha no próximo acesso.');
   },
+  'people:create': async (form, values) => {
+    requirePermission('tasks:edit');
+    const name = values.text('personName');
+    const person = await store().apply((draft) => addPerson(draft, name));
+    form.reset();
+    toast(`${person.name} já pode receber tarefas.`);
+  },
 });
 
 registerActions({
+  'people:remove': async (el) => {
+    requirePermission('tasks:edit');
+    const person = store().data.users.find((u) => u.id === el.dataset.id);
+    if (!person) return;
+    const ok = await confirmAction({
+      title: `Remover ${person.name}`,
+      text: `${person.name} sai da lista de responsáveis. Tarefas, projetos e oportunidades que eram só dela(e) passam para você.`,
+      confirmLabel: 'Remover',
+    });
+    if (!ok) return;
+    await store().apply((draft, ctx) => removePerson(draft, person.id, ctx.userId));
+    toast(`${person.name} foi removida(o) da equipe.`);
+  },
   'system:reset-demo': async () => {
     requirePermission('system:manage');
     const ok = await confirmAction({ title: 'Restaurar demonstração', text: 'Todos os dados deste navegador serão substituídos pelos dados fictícios de demonstração.', confirmLabel: 'Restaurar' });
@@ -146,13 +167,19 @@ export const systemView: View = {
 
         <aside class="detail-grid__side">
           ${panel({
-            title: 'Perfis',
+            title: 'Equipe',
             icon: 'user',
             body: html`<ul class="people">
               ${data.users.map(
-                (u) => html`<li class="people__item">${avatar(u, 'md')}<div><strong>${u.name}</strong><small>${ROLE_LABELS[u.role]}${u.id === currentUser.id ? (connected ? ' · você' : ' · perfil ativo') : ''}</small></div></li>`,
+                (u) => html`<li class="people__item">${avatar(u, 'md')}<div><strong>${u.name}</strong><small>${u.guest ? 'Recebe tarefas · sem login' : ROLE_LABELS[u.role]}${u.id === currentUser.id ? (connected ? ' · você' : ' · perfil ativo') : ''}</small></div>
+                  ${u.guest ? button({ label: `Remover ${u.name}`, action: 'people:remove', variant: 'ghost', icon: 'trash', size: 'sm', iconOnly: true, data: { id: u.id } }) : ''}</li>`,
               )}
-            </ul>`,
+            </ul>
+            <form class="people-add" data-form="people:create">
+              ${textField({ name: 'personName', label: 'Adicionar pessoa', placeholder: 'Ex.: Ana (freelancer)', required: true })}
+              <button type="submit" class="btn btn--secondary btn--sm">Adicionar</button>
+            </form>
+            <p class="small muted">Pessoas extras aparecem como opção de responsável nas tarefas, projetos e oportunidades. Elas não entram no sistema.</p>`,
           })}
           ${panel({
             title: 'Marca',

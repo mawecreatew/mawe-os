@@ -4,6 +4,7 @@
  */
 import { diffInDays, type ISODate } from '../core/dates.ts';
 import { OPEN_STAGES } from './labels.ts';
+import { peopleNames } from './people.ts';
 import type {
   AppData,
   Client,
@@ -64,12 +65,12 @@ export function sortTasks(tasks: Task[]): Task[] {
 }
 
 export function overdueTasks(data: AppData, today: ISODate, userId?: ID): Task[] {
-  return sortTasks(data.tasks.filter((t) => isOverdue(t, today) && (!userId || t.assigneeId === userId)));
+  return sortTasks(data.tasks.filter((t) => isOverdue(t, today) && (!userId || t.assigneeIds.includes(userId))));
 }
 
 export function pendingTasks(data: AppData, today: ISODate, userId?: ID): Task[] {
   return sortTasks(
-    data.tasks.filter((t) => isOpen(t) && !isOverdue(t, today) && (!userId || t.assigneeId === userId)),
+    data.tasks.filter((t) => isOpen(t) && !isOverdue(t, today) && (!userId || t.assigneeIds.includes(userId))),
   );
 }
 
@@ -79,7 +80,7 @@ export function pendingTasks(data: AppData, today: ISODate, userId?: ID): Task[]
  */
 export function todayPriorities(data: AppData, today: ISODate, userId: ID, limit = 5): Task[] {
   const relevant = data.tasks.filter((t) => {
-    if (!isOpen(t) || t.assigneeId !== userId || t.dueDate === null) return false;
+    if (!isOpen(t) || !t.assigneeIds.includes(userId) || t.dueDate === null) return false;
     const days = diffInDays(today, t.dueDate);
     return days <= 0 || (t.priority === 'alta' && days <= 2);
   });
@@ -103,7 +104,7 @@ export function filterTasks(tasks: Task[], filters: TaskFilters, today: ISODate)
   const term = filters.search?.trim().toLowerCase() ?? '';
   return sortTasks(
     tasks.filter((t) => {
-      if (filters.assigneeId !== 'todos' && t.assigneeId !== filters.assigneeId) return false;
+      if (filters.assigneeId !== 'todos' && !t.assigneeIds.includes(filters.assigneeId)) return false;
       if (filters.status === 'abertas' && !isOpen(t)) return false;
       if (filters.status === 'concluidas' && isOpen(t)) return false;
       if (filters.status === 'atrasadas' && !isOverdue(t, today)) return false;
@@ -145,7 +146,7 @@ export function upcomingDeadlines(
         kind: 'task',
         id: t.id,
         title: t.title,
-        subtitle: `Tarefa · ${findUser(data, t.assigneeId)?.shortName ?? 'Sem responsável'}`,
+        subtitle: `Tarefa · ${peopleNames(data, t.assigneeIds)}`,
         date: t.dueDate,
         href: '#/tarefas',
       });

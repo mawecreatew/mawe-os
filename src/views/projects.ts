@@ -20,7 +20,8 @@ import { currentStage, decisionsOf, findClient, findProject, findUser, projectPr
 import type { Project, ProjectStatus } from '../domain/types.ts';
 import { requirePermission, rerender, store, today } from '../app/context.ts';
 import type { View } from '../app/view.ts';
-import { badge, button, demoTag, emptyState, externalLink, pageHeader, panel, person, progressBar, segmented } from '../ui/components.ts';
+import { badge, button, demoTag, emptyState, externalLink, pageHeader, panel, people, progressBar, segmented } from '../ui/components.ts';
+import { peopleField, readPeople } from '../ui/people-picker.ts';
 import { formActions, selectField, textareaField, textField } from '../ui/forms.ts';
 import { icon } from '../ui/icons.ts';
 import { closeModal, confirmAction, openModal, toast } from '../ui/overlay.ts';
@@ -46,7 +47,7 @@ export function openProjectForm(project?: Project, clientId?: string): void {
     return;
   }
   const v = project ?? {
-    name: '', clientId: clientId ?? data.clients[0].id, ownerId: currentUser.id, status: 'planejamento' as ProjectStatus,
+    name: '', clientId: clientId ?? data.clients[0].id, ownerIds: [currentUser.id], status: 'planejamento' as ProjectStatus,
     startDate: today(), dueDate: '', description: '', links: { repository: '', production: '', staging: '' },
   };
   openModal({
@@ -58,13 +59,13 @@ export function openProjectForm(project?: Project, clientId?: string): void {
         ${textField({ name: 'name', label: 'Nome do projeto', value: v.name, required: true, autofocus: true, placeholder: 'Ex.: Site institucional' })}
         <div class="form-grid">
           ${selectField({ name: 'clientId', label: 'Cliente', value: v.clientId, required: true, options: data.clients.map((c) => ({ value: c.id, label: c.company })) })}
-          ${selectField({ name: 'ownerId', label: 'Responsável principal', value: v.ownerId, options: data.users.map((u) => ({ value: u.id, label: u.name })) })}
           ${selectField({ name: 'status', label: 'Status', value: v.status, options: PROJECT_STATUSES })}
+          ${textField({ name: 'startDate', label: 'Início', type: 'date', value: v.startDate })}
           ${textField({ name: 'dueDate', label: 'Prazo de entrega', type: 'date', value: v.dueDate, required: true })}
+          ${peopleField({ name: 'ownerIds', label: 'Responsáveis', data, value: v.ownerIds, className: 'span-2' })}
           ${textField({ name: 'repository', label: 'Repositório GitHub', value: v.links.repository, placeholder: 'github.com/organizacao/projeto', hint: 'Apenas o link. Nenhuma conexão é feita.' })}
           ${textField({ name: 'production', label: 'Site publicado', value: v.links.production, placeholder: 'www.cliente.com.br' })}
           ${textField({ name: 'staging', label: 'Versão de teste', value: v.links.staging, placeholder: 'Link de homologação (opcional)' })}
-          ${textField({ name: 'startDate', label: 'Início', type: 'date', value: v.startDate })}
         </div>
         ${textareaField({ name: 'description', label: 'Descrição e escopo', value: v.description })}
         ${formActions(project ? 'Salvar alterações' : 'Criar projeto')}
@@ -83,7 +84,7 @@ registerForms({
     const input: ProjectInput = {
       name: values.text('name'),
       clientId: values.text('clientId'),
-      ownerId: values.text('ownerId'),
+      ownerIds: readPeople(values, 'ownerIds'),
       status: values.text('status') as ProjectStatus,
       startDate: values.text('startDate'),
       dueDate: values.text('dueDate'),
@@ -205,7 +206,7 @@ function renderList(): SafeHtml {
               <span class="project-card__stage">${currentStage(p)}</span>
               <span class="project-mini__progress">${progressBar(progress)}<span>${progress}%</span></span>
               <span class="project-card__foot">
-                ${person(findUser(data, p.ownerId))}
+                ${people(data, p.ownerIds)}
                 <span class="${cx('project-card__due', late && 'text-danger')}">${icon('calendar', 14)} ${formatShortDate(p.dueDate)}${p.status !== 'publicado' ? ` · ${relativeDay(p.dueDate, t)}` : ''}</span>
               </span>
               ${demoTag(p)}
@@ -249,7 +250,7 @@ function renderDetail(project: Project): SafeHtml {
           ${PROJECT_STATUSES.map((s) => html`<option value="${s.value}" ${s.value === project.status ? 'selected' : ''}>${s.label}</option>`)}
         </select>
       </div>
-      <div class="project-summary__item"><span class="project-summary__label">Responsável</span>${person(findUser(data, project.ownerId))}</div>
+      <div class="project-summary__item"><span class="project-summary__label">Responsável</span>${people(data, project.ownerIds)}</div>
       <div class="project-summary__item">
         <span class="project-summary__label">Prazo de entrega</span>
         <strong class="${cx(project.status !== 'publicado' && project.dueDate < t && 'text-danger')}">${formatLongDate(project.dueDate)}</strong>

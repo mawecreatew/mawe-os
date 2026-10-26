@@ -3,6 +3,7 @@ import { registerActions } from '../core/events.ts';
 import { cx, html, type SafeHtml } from '../core/html.ts';
 import { BRAND } from '../config/brand.ts';
 import { overdueTasks, pipelineSummary } from '../domain/selectors.ts';
+import { teamMembers } from '../domain/people.ts';
 import { avatar } from '../ui/components.ts';
 import { icon, type IconName } from '../ui/icons.ts';
 import { auth, brandAssets, store, today } from './context.ts';
@@ -63,7 +64,7 @@ function renderProfile(): SafeHtml {
     <div class="profile">
       <span class="profile__label">Perfil ativo</span>
       <div class="profile__switch" role="group" aria-label="Trocar perfil ativo">
-        ${data.users.map(
+        ${teamMembers(data).map(
           (u) => html`<button type="button" class="${cx('profile__option', u.id === currentUser.id && 'is-active')}"
             data-action="profile:switch" data-id="${u.id}" aria-pressed="${u.id === currentUser.id ? 'true' : 'false'}">
             ${avatar(u)}<span>${u.shortName}</span></button>`,

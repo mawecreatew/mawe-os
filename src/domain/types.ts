@@ -21,6 +21,8 @@ export interface User {
   shortName: string;
   role: Role;
   title: string;
+  /** Pessoa cadastrada só para receber tarefas (freelancer, ajudante): não faz login. */
+  guest?: boolean;
 }
 
 // ---------------------------------------------------------------- Comercial
@@ -61,7 +63,8 @@ export interface Opportunity {
   estimatedValue: number | null;
   nextAction: string;
   followUpDate: ISODate | null;
-  ownerId: ID;
+  /** Responsáveis (um ou mais). */
+  ownerIds: ID[];
   notes: string;
   history: HistoryEntry[];
   clientId: ID | null;
@@ -132,7 +135,8 @@ export interface Project {
   id: ID;
   name: string;
   clientId: ID;
-  ownerId: ID;
+  /** Responsáveis (um ou mais). */
+  ownerIds: ID[];
   status: ProjectStatus;
   startDate: ISODate;
   dueDate: ISODate;
@@ -158,7 +162,8 @@ export interface Task {
   id: ID;
   title: string;
   description: string;
-  assigneeId: ID;
+  /** Responsáveis (um ou mais). */
+  assigneeIds: ID[];
   priority: Priority;
   status: TaskStatus;
   dueDate: ISODate | null;

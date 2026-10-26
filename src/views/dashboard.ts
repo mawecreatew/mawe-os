@@ -9,7 +9,6 @@ import {
   activeProjects,
   currentStage,
   findClient,
-  findUser,
   greeting,
   overdueTasks,
   pendingTasks,
@@ -21,7 +20,7 @@ import {
 } from '../domain/selectors.ts';
 import { allowed, store, today } from '../app/context.ts';
 import type { View } from '../app/view.ts';
-import { avatar, button, emptyState, pageHeader, panel, progressBar, statCard } from '../ui/components.ts';
+import { avatarStack, button, emptyState, pageHeader, panel, progressBar, statCard } from '../ui/components.ts';
 import { icon, type IconName } from '../ui/icons.ts';
 import { taskList, taskRow } from '../ui/task-row.ts';
 
@@ -47,8 +46,8 @@ export const dashboardView: View = {
     const projects = activeProjects(data);
     const funnelScale = Math.max(1, pipeline.openCount);
 
-    const myOverdue = overdueAll.filter((x) => x.assigneeId === currentUser.id).length;
-    const myToday = data.tasks.filter((x) => x.assigneeId === currentUser.id && x.status !== 'concluida' && x.dueDate === t).length;
+    const myOverdue = overdueAll.filter((x) => x.assigneeIds.includes(currentUser.id)).length;
+    const myToday = data.tasks.filter((x) => x.assigneeIds.includes(currentUser.id) && x.status !== 'concluida' && x.dueDate === t).length;
     const summary = [
       myToday ? pluralize(myToday, 'tarefa para hoje', 'tarefas para hoje') : 'Nenhuma tarefa com prazo hoje',
       myOverdue ? pluralize(myOverdue, 'atrasada', 'atrasadas') : null,
@@ -165,7 +164,7 @@ export const dashboardView: View = {
                     <a class="project-mini" href="#/projetos/${p.id}">
                       <span class="project-mini__head">
                         <span class="project-mini__name">${p.name}</span>
-                        ${avatar(findUser(data, p.ownerId))}
+                        ${avatarStack(data, p.ownerIds)}
                       </span>
                       <span class="project-mini__sub">${findClient(data, p.clientId)?.company ?? '—'} · ${currentStage(p)}</span>
                       <span class="project-mini__progress">${progressBar(progress, `Progresso de ${p.name}`)}<span>${progress}%</span></span>

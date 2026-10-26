@@ -6,7 +6,7 @@
 import { formatShortDate } from '../core/dates.ts';
 import { formatCurrency } from '../core/format.ts';
 import { labelOf, OPPORTUNITY_STAGES } from '../domain/labels.ts';
-import { findUser } from '../domain/selectors.ts';
+import { peopleNames } from '../domain/people.ts';
 import type { AppData, Opportunity } from '../domain/types.ts';
 
 export function opportunityBriefing(data: AppData, opp: Opportunity, includeValue: boolean): string {
@@ -14,7 +14,7 @@ export function opportunityBriefing(data: AppData, opp: Opportunity, includeValu
     `Oportunidade: ${opp.company} (${opp.segment})`,
     `Contato: ${opp.contactName} · Origem: ${opp.source}`,
     `Etapa atual: ${labelOf(OPPORTUNITY_STAGES, opp.stage)}`,
-    `Responsável: ${findUser(data, opp.ownerId)?.name ?? '—'}`,
+    `Responsável: ${peopleNames(data, opp.ownerIds, '—')}`,
   ];
   if (includeValue) {
     lines.push(`Valor estimado: ${opp.estimatedValue === null ? 'não definido' : formatCurrency(opp.estimatedValue)}`);

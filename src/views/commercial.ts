@@ -19,7 +19,8 @@ import { findOpportunity, findUser, opportunitiesByStage, pipelineSummary, tasks
 import type { Opportunity, OpportunityStage } from '../domain/types.ts';
 import { allowed, requirePermission, rerender, store, today } from '../app/context.ts';
 import type { View } from '../app/view.ts';
-import { avatar, badge, button, demoTag, dueDate, emptyState, pageHeader, panel, person, segmented, statCard } from '../ui/components.ts';
+import { avatar, badge, button, demoTag, dueDate, emptyState, pageHeader, panel, people, avatarStack, segmented, statCard } from '../ui/components.ts';
+import { peopleField, readPeople } from '../ui/people-picker.ts';
 import { formActions, selectField, textareaField, textField } from '../ui/forms.ts';
 import { icon } from '../ui/icons.ts';
 import { closeModal, confirmAction, openModal, toast } from '../ui/overlay.ts';
@@ -29,7 +30,7 @@ import { setAgentDraft } from './agents.ts';
 const ui = { mode: 'funil' as 'funil' | 'lista', owner: 'todos' };
 
 function visibleOpportunities(list: Opportunity[]): Opportunity[] {
-  return ui.owner === 'todos' ? list : list.filter((o) => o.ownerId === ui.owner);
+  return ui.owner === 'todos' ? list : list.filter((o) => o.ownerIds.includes(ui.owner));
 }
 
 // ---------------------------------------------------------------- Formulário
@@ -39,7 +40,7 @@ function openOpportunityForm(opp?: Opportunity, stage?: OpportunityStage): void 
   const financeEdit = allowed('finance:edit');
   const v: OpportunityInput = opp ?? {
     contactName: '', company: '', segment: '', source: 'Instagram', contact: {}, stage: stage ?? 'identificada',
-    estimatedValue: null, nextAction: '', followUpDate: null, ownerId: currentUser.id, notes: '',
+    estimatedValue: null, nextAction: '', followUpDate: null, ownerIds: [currentUser.id], notes: '',
   };
   openModal({
     title: opp ? 'Editar oportunidade' : 'Nova oportunidade',
@@ -51,16 +52,16 @@ function openOpportunityForm(opp?: Opportunity, stage?: OpportunityStage): void 
           ${textField({ name: 'contactName', label: 'Nome do contato', value: v.contactName })}
           ${textField({ name: 'segment', label: 'Segmento', value: v.segment, placeholder: 'Ex.: Cafeteria, Saúde' })}
           ${selectField({ name: 'source', label: 'Origem', value: v.source, options: LEAD_SOURCES.map((s) => ({ value: s, label: s })) })}
+          ${peopleField({ name: 'ownerIds', label: 'Responsáveis', data, value: v.ownerIds, className: 'span-2' })}
           ${textField({ name: 'email', label: 'E-mail', type: 'email', value: v.contact.email })}
           ${textField({ name: 'phone', label: 'Telefone / WhatsApp', type: 'tel', value: v.contact.phone })}
           ${textField({ name: 'instagram', label: 'Instagram', value: v.contact.instagram, placeholder: '@perfil' })}
-          ${selectField({ name: 'ownerId', label: 'Responsável', value: v.ownerId, options: data.users.map((u) => ({ value: u.id, label: u.name })) })}
           ${selectField({ name: 'stage', label: 'Etapa', value: v.stage, options: OPPORTUNITY_STAGES })}
           ${financeEdit
             ? textField({ name: 'estimatedValue', label: 'Valor estimado (R$)', value: v.estimatedValue ?? '', inputmode: 'decimal', placeholder: 'Deixe vazio se ainda não souber' })
             : html`<div></div>`}
-          ${textField({ name: 'nextAction', label: 'Próxima ação', value: v.nextAction, className: 'span-2' })}
           ${textField({ name: 'followUpDate', label: 'Data de acompanhamento', type: 'date', value: v.followUpDate ?? '' })}
+          ${textField({ name: 'nextAction', label: 'Próxima ação', value: v.nextAction, className: 'span-2' })}
         </div>
         ${textareaField({ name: 'notes', label: 'Observações', value: v.notes, rows: 3 })}
         ${formActions(opp ? 'Salvar alterações' : 'Cadastrar oportunidade')}
@@ -87,7 +88,7 @@ registerForms({
       estimatedValue: allowed('finance:edit') ? parseMoney(values.text('estimatedValue')) : (id ? findOpportunity(store().data, id)?.estimatedValue ?? null : null),
       nextAction: values.text('nextAction'),
       followUpDate: values.optional('followUpDate'),
-      ownerId: values.text('ownerId'),
+      ownerIds: readPeople(values, 'ownerIds'),
       notes: values.text('notes'),
     };
     if (!input.company) throw new Error('Informe o nome da empresa.');
@@ -197,7 +198,7 @@ function opportunityCard(opp: Opportunity): SafeHtml {
       <a class="opp-card__link" href="#/comercial/${opp.id}">
         <span class="opp-card__head">
           <span class="opp-card__company">${opp.company}</span>
-          ${avatar(findUser(data, opp.ownerId))}
+          ${avatarStack(data, opp.ownerIds)}
         </span>
         <span class="opp-card__sub">${[opp.segment, opp.source].filter(Boolean).join(' · ')} ${demoTag(opp)}</span>
         ${finance && opp.estimatedValue !== null ? html`<span class="opp-card__value">${formatCurrency(opp.estimatedValue)}</span>` : ''}
@@ -248,7 +249,7 @@ function renderList(list: Opportunity[]): SafeHtml {
             (o) => html`<tr>
               <td class="cell-main"><a href="#/comercial/${o.id}">${o.company}</a> ${demoTag(o)}<span class="cell-sub">${o.contactName} · ${o.segment}</span></td>
               <td data-label="Etapa">${badge(labelOf(OPPORTUNITY_STAGES, o.stage), toneOf(OPPORTUNITY_STAGES, o.stage))}</td>
-              <td data-label="Responsável">${person(findUser(data, o.ownerId))}</td>
+              <td data-label="Responsável">${people(data, o.ownerIds)}</td>
               ${finance ? html`<td data-label="Valor" class="num">${o.estimatedValue === null ? html`<span class="muted">—</span>` : formatCurrency(o.estimatedValue)}</td>` : ''}
               <td data-label="Próxima ação">${o.nextAction || html`<span class="muted">—</span>`}</td>
               <td data-label="Acompanhamento">${OPEN_STAGES.includes(o.stage) ? dueDate(o.followUpDate, t) : html`<span class="muted">—</span>`}</td>
@@ -334,7 +335,7 @@ function renderDetail(opp: Opportunity): SafeHtml {
               ${infoItem('E-mail', opp.contact.email)}
               ${infoItem('Telefone', opp.contact.phone)}
               ${infoItem('Instagram', opp.contact.instagram)}
-              ${infoItem('Responsável', person(findUser(data, opp.ownerId)))}
+              ${infoItem(opp.ownerIds.length > 1 ? 'Responsáveis' : 'Responsável', people(data, opp.ownerIds))}
               ${finance ? infoItem('Valor estimado', opp.estimatedValue === null ? 'Ainda não definido' : formatCurrency(opp.estimatedValue)) : ''}
               ${infoItem('Cadastrada em', formatShortDate(opp.createdAt.slice(0, 10)))}
             </dl>

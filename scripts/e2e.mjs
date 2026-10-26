@@ -103,10 +103,17 @@ try {
     await go('#/tarefas');
     await page.getByRole('button', { name: 'Nova tarefa' }).first().click();
     await page.locator('dialog.modal input[name=title]').fill('Teste automatizado de tarefa');
-    await page.locator('dialog.modal select[name=assigneeId]').selectOption('wesley');
+    const chip = (id) => page.locator('dialog.modal label.people-chip', { has: page.locator(`input[value="${id}"]`) });
+    await chip('maria').click(); // desmarca quem está criando
+    await chip('wesley').click();
+    await page.locator('dialog.modal [data-people-input]').fill('Ana Teste');
+    await page.locator('dialog.modal [data-people-input]').press('Enter');
+    assert.equal(await page.locator('dialog.modal input[name=assigneeIds]:checked').count(), 2);
     await page.locator('dialog.modal select[name=priority]').selectOption('alta');
     await submitModal();
     await page.getByText('Teste automatizado de tarefa').waitFor();
+    const row = page.locator('.table--tasks tbody tr', { hasText: 'Teste automatizado de tarefa' });
+    assert.match(await row.locator('td[data-label="Responsável"]').innerText(), /Wesley e Ana/);
   });
 
   await step('filtra tarefas por responsável e situação', async () => {
@@ -361,9 +368,11 @@ try {
     await maria.goto(LOGIN_BASE + '#/tarefas');
     await maria.getByRole('button', { name: 'Nova tarefa' }).first().click();
     await maria.locator('dialog.modal input[name=title]').fill('Revisar contrato do cliente');
-    await maria.locator('dialog.modal select[name=assigneeId]').selectOption('wesley');
+    await maria.locator('dialog.modal label.people-chip', { has: maria.locator('input[value="wesley"]') }).click();
     await maria.locator('dialog.modal button[type=submit]').click();
     await maria.getByText('Revisar contrato do cliente').waitFor();
+    const saved = fakeSupabase.workspace.data.tasks.find((t) => t.title === 'Revisar contrato do cliente');
+    assert.deepEqual(saved.assigneeIds, ['maria', 'wesley'], 'deveria ficar com os dois responsáveis');
     assert.equal(fakeSupabase.workspace.version, 2, 'deveria ter gravado no Supabase');
   });
 

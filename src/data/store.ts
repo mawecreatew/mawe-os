@@ -4,6 +4,7 @@
  */
 import type { ActionContext } from '../domain/operations.ts';
 import type { AppData, ID, User } from '../domain/types.ts';
+import { normalizeData } from '../domain/people.ts';
 import { createEmptyData, createDemoData } from './seed.ts';
 import type { DataSource } from './source.ts';
 
@@ -39,13 +40,13 @@ export class Store {
     this.state = data;
     this.profileLocked = Boolean(options.lockedUserId);
     if (options.lockedUserId) {
-      if (!data.users.some((u) => u.id === options.lockedUserId)) {
+      if (!data.users.some((u) => u.id === options.lockedUserId && !u.guest)) {
         throw new Error(`Perfil "${options.lockedUserId}" não existe nos dados do Mawe OS.`);
       }
       this.userId = options.lockedUserId;
     } else {
       const saved = this.profileStorage?.getItem(PROFILE_KEY);
-      this.userId = data.users.some((u) => u.id === saved) ? (saved as ID) : data.users[0].id;
+      this.userId = data.users.some((u) => u.id === saved && !u.guest) ? (saved as ID) : data.users[0].id;
     }
   }
 
@@ -53,6 +54,7 @@ export class Store {
   static async open(options: StoreOptions): Promise<Store> {
     const now = options.clock?.() ?? new Date();
     let data = await options.source.load();
+    if (data) data = normalizeData(data);
     if (!data) {
       data = options.initialDataset === 'empty' ? createEmptyData(now) : createDemoData(now);
       await options.source.save(data);
@@ -95,7 +97,8 @@ export class Store {
       await this.source.save(draft);
     } catch (error) {
       // Não salvou: volta ao que está gravado de fato (ou ao estado anterior).
-      this.state = (await this.source.load().catch(() => null)) ?? previous;
+      const saved = await this.source.load().catch(() => null);
+      this.state = saved ? normalizeData(saved) : previous;
       this.notify();
       throw error;
     }
@@ -104,7 +107,8 @@ export class Store {
 
   /** Busca a versão mais recente na fonte (ex.: alterações do outro sócio). Retorna true se mudou. */
   async sync(): Promise<boolean> {
-    const latest = await this.source.load();
+    const loaded = await this.source.load();
+    const latest = loaded ? normalizeData(loaded) : null;
     if (!latest || JSON.stringify(latest) === JSON.stringify(this.state)) return false;
     this.state = latest;
     this.notify();
@@ -113,7 +117,7 @@ export class Store {
 
   setCurrentUser(id: ID): void {
     if (this.profileLocked) return;
-    if (!this.state.users.some((u) => u.id === id)) return;
+    if (!this.state.users.some((u) => u.id === id && !u.guest)) return;
     this.userId = id;
     this.profileStorage?.setItem(PROFILE_KEY, id);
     this.notify();

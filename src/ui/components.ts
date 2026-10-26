@@ -3,7 +3,8 @@ import { diffInDays, formatShortDate, relativeDay, type ISODate } from '../core/
 import { initials } from '../core/format.ts';
 import { cx, html, type SafeHtml } from '../core/html.ts';
 import type { Tone } from '../domain/labels.ts';
-import type { User } from '../domain/types.ts';
+import { peopleNames } from '../domain/people.ts';
+import type { AppData, ID, User } from '../domain/types.ts';
 import { icon, type IconName } from './icons.ts';
 
 export function badge(label: string, tone: Tone = 'neutral', extraClass = ''): SafeHtml {
@@ -17,7 +18,20 @@ export function demoTag(item: { isDemo?: boolean }): SafeHtml {
 
 export function avatar(user: User | undefined, size: 'sm' | 'md' = 'sm'): SafeHtml {
   if (!user) return html`<span class="avatar avatar--${size} avatar--empty" title="Sem responsável">—</span>`;
-  return html`<span class="avatar avatar--${size} avatar--${user.id}" title="${user.name}">${initials(user.name)}</span>`;
+  return html`<span class="${cx('avatar', `avatar--${size}`, `avatar--${user.id}`, user.guest && 'avatar--guest')}" title="${user.name}">${initials(user.name)}</span>`;
+}
+
+/** Avatares sobrepostos de um ou mais responsáveis. */
+export function avatarStack(data: AppData, ids: readonly ID[] | undefined, size: 'sm' | 'md' = 'sm'): SafeHtml {
+  const users = (ids ?? []).map((id) => data.users.find((u) => u.id === id)).filter((u): u is User => Boolean(u));
+  if (!users.length) return avatar(undefined, size);
+  if (users.length === 1) return avatar(users[0], size);
+  return html`<span class="avatar-stack" title="${peopleNames(data, ids)}">${users.map((u) => avatar(u, size))}</span>`;
+}
+
+/** Avatares + nomes ("Maria e Wesley"). */
+export function people(data: AppData, ids: readonly ID[] | undefined): SafeHtml {
+  return html`<span class="person">${avatarStack(data, ids)}<span>${peopleNames(data, ids)}</span></span>`;
 }
 
 export function person(user: User | undefined): SafeHtml {

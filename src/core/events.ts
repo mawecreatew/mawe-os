@@ -53,6 +53,14 @@ export class FormValues {
   optional(name: string): string | null {
     return this.text(name) || null;
   }
+  /** Todos os valores de campos com o mesmo nome (ex.: caixas de seleção). */
+  all(name: string): string[] {
+    return this.data
+      .getAll(name)
+      .filter((v): v is string => typeof v === 'string')
+      .map((v) => v.trim())
+      .filter(Boolean);
+  }
   checked(name: string): boolean {
     return this.data.get(name) !== null;
   }

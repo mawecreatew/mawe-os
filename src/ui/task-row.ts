@@ -1,9 +1,9 @@
 /** Linha de tarefa reutilizada no Painel, em Tarefas e nos detalhes de projetos. */
 import { cx, html, type SafeHtml } from '../core/html.ts';
 import { labelOf, PRIORITIES, toneOf } from '../domain/labels.ts';
-import { findUser, isOverdue, relatedLabel } from '../domain/selectors.ts';
+import { isOverdue, relatedLabel } from '../domain/selectors.ts';
 import type { AppData, Task } from '../domain/types.ts';
-import { avatar, badge, dueDate } from './components.ts';
+import { avatarStack, badge, dueDate } from './components.ts';
 
 export function taskRow(data: AppData, task: Task, today: string, options: { showRelated?: boolean; showAssignee?: boolean } = {}): SafeHtml {
   const done = task.status === 'concluida';
@@ -21,7 +21,7 @@ export function taskRow(data: AppData, task: Task, today: string, options: { sho
       </div>
       <div class="task-row__side">
         ${task.priority === 'alta' && !done ? badge(labelOf(PRIORITIES, task.priority), toneOf(PRIORITIES, task.priority)) : ''}
-        ${options.showAssignee === false ? '' : avatar(findUser(data, task.assigneeId))}
+        ${options.showAssignee === false ? '' : avatarStack(data, task.assigneeIds)}
       </div>
     </li>
   `;

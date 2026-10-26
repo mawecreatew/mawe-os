@@ -205,6 +205,41 @@
 .avatar--maria { background: var(--brown-700); color: var(--cream-50); }
 .avatar--wesley { background: var(--gold-100); color: var(--brown-800); box-shadow: inset 0 0 0 1px var(--gold-300); }
 .avatar--empty { background: var(--cream-200); color: var(--text-3); }
+.avatar--guest { background: var(--cream-200); color: var(--brown-700); box-shadow: inset 0 0 0 1px var(--cream-300); }
+
+/* Vários responsáveis: avatares sobrepostos */
+.avatar-stack { display: inline-flex; flex: none; }
+.avatar-stack .avatar { box-shadow: 0 0 0 2px var(--surface); }
+.avatar-stack .avatar + .avatar { margin-left: -8px; }
+
+/* Seletor de responsáveis */
+.people-field { border: 0; margin: 0; padding: 0; }
+.people-field__options { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.people-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 4px 12px 4px 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--cream-0);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+.people-chip:hover { border-color: var(--brown-300); }
+.people-chip:has(input:checked) { background: var(--gold-100); border-color: var(--gold-500); color: var(--brown-800); font-weight: 500; }
+.people-chip:has(input:focus-visible) { box-shadow: var(--focus-ring); }
+.people-chip--all { padding-left: 12px; border-style: dashed; font: inherit; font-size: var(--text-sm); }
+.people-field__add { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
+.people-field__input { min-height: 34px; padding-top: 5px; padding-bottom: 5px; font-size: var(--text-sm); }
+.people-field__add .btn { flex: none; }
+.people-add { display: flex; align-items: flex-end; gap: var(--space-2); margin-top: var(--space-4); }
+.people-add .field { flex: 1; }
+.people-add .btn { min-height: 40px; }
 
 .person {
   display: inline-flex;

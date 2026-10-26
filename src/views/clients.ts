@@ -15,7 +15,8 @@ import {
   updateClient,
   type ClientInput,
 } from '../domain/operations.ts';
-import { clientFinance, findClient, findUser, projectProgress, projectsOfClient, tasksRelatedTo } from '../domain/selectors.ts';
+import { peopleNames } from '../domain/people.ts';
+import { clientFinance, findClient, projectProgress, projectsOfClient, tasksRelatedTo } from '../domain/selectors.ts';
 import type { Client, ContractStatus } from '../domain/types.ts';
 import { allowed, requirePermission, store, today } from '../app/context.ts';
 import type { View } from '../app/view.ts';
@@ -252,7 +253,7 @@ function renderDetail(client: Client): SafeHtml {
                 <a class="project-mini" href="#/projetos/${p.id}">
                   <span class="project-mini__head"><span class="project-mini__name">${p.name}</span>${badge(labelOf(PROJECT_STATUSES, p.status), toneOf(PROJECT_STATUSES, p.status))}</span>
                   <span class="project-mini__progress">${progressBar(projectProgress(p))}<span>${projectProgress(p)}%</span></span>
-                  <span class="project-mini__due">Entrega ${formatShortDate(p.dueDate)} · ${findUser(data, p.ownerId)?.shortName ?? ''}</span>
+                  <span class="project-mini__due">Entrega ${formatShortDate(p.dueDate)} · ${peopleNames(data, p.ownerIds, '')}</span>
                 </a></li>`)}</ul>`
             : emptyState({ icon: 'projects', compact: true, title: 'Nenhum projeto para este cliente' }),
         })}

@@ -665,6 +665,7 @@
 
 .people { list-style: none; display: flex; flex-direction: column; gap: var(--space-3); }
 .people__item { display: flex; align-items: center; gap: var(--space-3); }
+.people__item > .btn { margin-left: auto; }
 .people__item small { display: block; color: var(--text-3); font-size: var(--text-xs); }
 
 /* ------------------------------------------------------------ Responsivo */

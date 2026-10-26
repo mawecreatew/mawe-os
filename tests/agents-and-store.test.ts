@@ -51,7 +51,7 @@ describe('store', () => {
     let notified = 0;
     store.subscribe(() => notified++);
     await store.apply((draft, ctx) =>
-      createTask(draft, { title: 'Nova', description: '', assigneeId: 'wesley', priority: 'baixa', status: 'a_fazer', dueDate: null, related: null }, ctx),
+      createTask(draft, { title: 'Nova', description: '', assigneeIds: ['wesley'], priority: 'baixa', status: 'a_fazer', dueDate: null, related: null }, ctx),
     );
     assert.equal(notified, 1);
     const saved = await source.load();
