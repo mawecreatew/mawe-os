@@ -1,4 +1,4 @@
-/** Descobre quais arquivos de logo existem em public/brand/ (sem inventar substitutos). */
+/** Confere quais arquivos de logo existem em public/brand/ (sem inventar substitutos). */
 import { BRAND } from '../config/brand.ts';
 import { brandAssets } from './context.ts';
 
@@ -20,10 +20,4 @@ export async function loadBrandAssets(): Promise<void> {
   const [logo, monogram] = await Promise.all([firstAvailable(BRAND.logoHorizontal), firstAvailable(BRAND.monogram)]);
   brandAssets.logoHorizontal = logo;
   brandAssets.monogram = monogram;
-  if (monogram) {
-    const link = document.createElement('link');
-    link.rel = 'icon';
-    link.href = monogram;
-    document.head.append(link);
-  }
 }

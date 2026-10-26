@@ -30,7 +30,7 @@ await mkdir(`${OUT}/public`, { recursive: true });
 await cp('index.html', `${OUT}/index.html`);
 await cp('build', `${OUT}/build`, { recursive: true, filter: (src) => !src.endsWith('.map') });
 await cp('src/styles', `${OUT}/src/styles`, { recursive: true });
-await cp('public/brand', `${OUT}/public/brand`, { recursive: true, filter: (src) => !src.endsWith('.md') });
+await cp('public/brand', `${OUT}/public/brand`, { recursive: true, filter: (src) => !src.endsWith('.md') && !src.includes('originais') });
 await writeFile(`${OUT}/public/config.json`, JSON.stringify(config, null, 2));
 
 console.log(`Site montado em ${OUT}/ (Supabase: ${config.supabaseUrl})`);

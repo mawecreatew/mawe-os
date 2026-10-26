@@ -1,19 +1,18 @@
 # Logos oficiais da Mawe Create
 
-Esta pasta guarda os arquivos oficiais da marca. **Eles ainda não foram adicionados**,
-por isso o menu lateral mostra apenas o nome "Mawe Create" em texto — nenhuma logo
-substituta foi criada.
+| Arquivo                  | O que é                                              | Onde aparece                              |
+| ------------------------ | ---------------------------------------------------- | ----------------------------------------- |
+| `logo-horizontal.png`    | Logo horizontal "Mawe Create" (fundo marrom oficial) | Menu lateral e tela de login              |
+| `monograma.png`          | Monograma "M" no arco (512 × 512)                    | Barra do celular                          |
+| `favicon-64.png`         | Monograma reduzido                                   | Ícone da aba do navegador                 |
+| `apple-touch-icon.png`   | Monograma 180 × 180                                  | Atalho na tela inicial do celular         |
+| `originais/`             | Arquivos exatamente como enviados (não publicados)   | Referência                                |
 
-## Como adicionar
+Os arquivos acima foram gerados a partir dos originais apenas com recorte de margens e
+redimensionamento — o desenho não foi alterado.
 
-Salve os arquivos aqui com estes nomes (SVG é o formato preferido; PNG também funciona):
+As cores oficiais (amostradas das logos) estão em `src/styles/tokens.css`:
+marrom `#2A211C`, creme `#EFE8DC` e dourado `#B18D57`.
 
-| Arquivo                                     | O que é                                                          | Onde aparece              |
-| ------------------------------------------- | ---------------------------------------------------------------- | ------------------------- |
-| `logo-horizontal-clara.svg` (ou `.png`)     | Logo horizontal "Mawe Create" em versão clara (creme/dourado)    | Topo do menu lateral      |
-| `logo-horizontal.svg` (ou `.png`)           | Logo horizontal padrão (usada se a versão clara não existir)     | Topo do menu lateral      |
-| `monograma.svg` (ou `.png`)                 | Monograma "M" dentro do arco (foto de perfil)                    | Ícone da aba do navegador |
-
-O menu lateral tem fundo marrom-escuro, então a versão **clara** da logo horizontal
-é a ideal. Recarregue a página depois de salvar: o sistema detecta os arquivos
-automaticamente. Para usar outros nomes, ajuste `src/config/brand.ts`.
+Se receber versões em SVG ou com fundo transparente, substitua os arquivos mantendo os
+nomes (ou ajuste `src/config/brand.ts`).

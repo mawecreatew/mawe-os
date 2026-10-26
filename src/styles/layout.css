@@ -40,9 +40,8 @@
 
 .brand__logo {
   display: block;
-  max-width: 180px;
-  max-height: 44px;
-  object-fit: contain;
+  width: 176px;
+  height: auto;
 }
 
 .brand__name {
@@ -286,6 +285,8 @@
     font-size: var(--text-lg);
   }
 
+  .topbar__mark { width: 28px; height: 28px; border-radius: 6px; }
+
   .env-banner { padding: 8px var(--space-4); }
   .view { padding: var(--space-6) var(--space-4) var(--space-10); }
 }
@@ -326,14 +327,17 @@
 .auth-card__brand {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: var(--space-8);
-  padding-bottom: var(--space-5);
-  border-bottom: 1px solid var(--line);
+  align-items: center;
+  gap: 10px;
+  margin: calc(-1 * var(--space-8)) calc(-1 * var(--space-8)) var(--space-8);
+  padding: var(--space-8) var(--space-6) var(--space-5);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--brown-900);
 }
 
-.auth-card__brand .brand__product { color: var(--gold-600); }
-.auth-card__logo { max-width: 200px; max-height: 48px; object-fit: contain; align-self: flex-start; }
+.auth-card__brand .brand__product { color: var(--gold-300); }
+.auth-card__brand .auth-card__name { color: var(--text-on-dark); }
+.auth-card__logo { width: 220px; max-width: 100%; height: auto; }
 .auth-card__name { font-family: var(--font-display); font-size: 1.5rem; color: var(--brown-900); line-height: 1.1; }
 .auth-card__title { font-size: var(--text-2xl); }
 .auth-card__text { margin: var(--space-2) 0 var(--space-6); color: var(--text-2); }

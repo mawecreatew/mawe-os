@@ -5,7 +5,7 @@
 :root {
   /* Marrom (cor principal) */
   --brown-950: #22170f;
-  --brown-900: #2a1d16;
+  --brown-900: #2a211c; /* fundo oficial das logos */
   --brown-800: #3a2a20;
   --brown-700: #4d392b;
   --brown-600: #6a503d;
@@ -21,7 +21,7 @@
 
   /* Dourado discreto — usar com moderação, só em detalhes */
   --gold-600: #8c6a37;
-  --gold-500: #b08a52;
+  --gold-500: #b18d57; /* dourado oficial */
   --gold-300: #d8c39c;
   --gold-100: #f2e8d5;
 
@@ -29,7 +29,7 @@
   --text: #2a1d16;
   --text-2: #5c4a3d;
   --text-3: #87735f;
-  --text-on-dark: #f3ebdf;
+  --text-on-dark: #efe8dc; /* creme oficial */
   --text-on-dark-2: #bfae9c;
 
   /* Superfícies */
