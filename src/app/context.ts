@@ -44,3 +44,22 @@ export function setRenderer(fn: () => void): void {
 export function rerender(): void {
   renderer();
 }
+
+/**
+ * Modo de acesso:
+ * - `local`: protótipo sem login (dados neste navegador, perfil trocável);
+ * - `supabase`: login real; dados compartilhados; perfil definido pela conta.
+ */
+export type AuthState =
+  | { mode: 'local' }
+  | { mode: 'supabase'; client: import('../integrations/supabase/client.ts').SupabaseClient; email: string };
+
+let authState: AuthState = { mode: 'local' };
+
+export function setAuth(state: AuthState): void {
+  authState = state;
+}
+
+export function auth(): AuthState {
+  return authState;
+}

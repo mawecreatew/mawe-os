@@ -57,12 +57,21 @@ interface** — a proteção real precisa existir no servidor/banco quando ele e
 - `agents/provider.ts`: interface `AIProvider`. Hoje é `NoAIProvider` (desconectado).
 - Mensagens de sistema nas conversas são marcadas como "não é resposta de IA".
 
+## Login e dados compartilhados (Supabase)
+
+- `integrations/supabase/config.ts`: lê `public/config.json` (fora do Git). Sem o arquivo,
+  o sistema roda no modo protótipo local.
+- `integrations/supabase/client.ts`: login, renovação de sessão, saída, troca de senha e
+  chamadas REST, só com `fetch` (o npm estava bloqueado; dispensa `@supabase/supabase-js`).
+- `integrations/supabase/data-source.ts`: `SupabaseDataSource` grava o `AppData` inteiro na
+  linha `main` da tabela `workspace`, com controle de versão (evita sobrescrever o sócio).
+- `supabase/schema.sql`: tabelas, gatilho de versão e regras RLS (testadas em
+  `supabase/tests/`). `src/main.ts` decide o modo na abertura.
+
 ## Próximos passos sugeridos
 
-1. **Banco de dados + login** (ex.: Supabase, que tem plano gratuito, ou outro de sua
-   escolha): criar `SupabaseDataSource` implementando `DataSource`, mapear cada tipo de
-   `domain/types.ts` para uma tabela e aplicar regras de acesso por linha (RLS),
-   especialmente para parcelas/pagamentos.
+1. **Separar os dados em tabelas** (clientes, projetos, tarefas, parcelas...) quando
+   entrar alguém além dos sócios, para aplicar RLS por tipo de dado (ex.: financeiro).
 2. **Servidor para IA**: uma função de servidor que guarde a chave da API e implemente
    `AIProvider`. A chave nunca deve ficar no código do navegador.
 3. **Ações propostas pelos agentes**: o agente devolve `proposedActions` (ex.: "criar

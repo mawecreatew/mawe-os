@@ -6,9 +6,13 @@ import { installEventDelegation, onActionError } from './core/events.ts';
 import { html } from './core/html.ts';
 import { currentRoute } from './core/router.ts';
 import { LocalStorageDataSource, MemoryDataSource, type DataSource } from './data/source.ts';
-import { Store } from './data/store.ts';
+import { Store, type StoreOptions } from './data/store.ts';
 import { loadBrandAssets } from './app/brand-loader.ts';
-import { setRenderer, setStore } from './app/context.ts';
+import { setAuth, setRenderer, setStore } from './app/context.ts';
+import { showBlockingMessage, showLogin } from './app/login.ts';
+import { AuthRequiredError, SupabaseClient } from './integrations/supabase/client.ts';
+import { loadSupabaseConfig } from './integrations/supabase/config.ts';
+import { SupabaseDataSource } from './integrations/supabase/data-source.ts';
 import { renderPrototypeBanner, renderSidebar } from './app/shell.ts';
 import type { View } from './app/view.ts';
 import { emptyState, pageHeader } from './ui/components.ts';
@@ -41,7 +45,7 @@ const notFoundView: View = {
 
 const STORAGE_KEY = 'mawe-os:dados:v1';
 
-function pickDataSource(): DataSource {
+function localDataSource(): DataSource {
   try {
     const probe = '__mawe_probe__';
     window.localStorage.setItem(probe, '1');
@@ -98,16 +102,91 @@ function render(): void {
   }
 }
 
+/** Intervalo para buscar alterações feitas pelo outro sócio. */
+const SYNC_INTERVAL_MS = 20_000;
+
+function startSync(store: Store): void {
+  const sync = () => {
+    const busy = document.querySelector('dialog[open]') || (document.activeElement as HTMLElement | null)?.matches('input, textarea, select');
+    if (document.visibilityState !== 'visible' || busy) return;
+    store.sync().catch((error) => {
+      if (error instanceof AuthRequiredError) window.location.reload();
+    });
+  };
+  setInterval(sync, SYNC_INTERVAL_MS);
+  window.addEventListener('focus', sync);
+}
+
+/**
+ * Decide como o sistema abre:
+ * - sem public/config.json → protótipo local (como antes);
+ * - com config → exige login no Supabase e usa os dados compartilhados.
+ * Retorna null quando uma tela de login ou aviso foi exibida no lugar do sistema.
+ */
+async function prepareAccess(): Promise<StoreOptions | null> {
+  let config;
+  try {
+    config = await loadSupabaseConfig();
+  } catch (error) {
+    showBlockingMessage({ title: 'Configuração incompleta', text: error instanceof Error ? error.message : String(error), canRetry: true });
+    return null;
+  }
+  if (!config) return { source: localDataSource(), profileStorage: window.localStorage };
+
+  const client = new SupabaseClient(config, { storage: window.localStorage });
+  try {
+    const session = await client.restoreSession();
+    if (!session) {
+      showLogin(client);
+      return null;
+    }
+    setAuth({ mode: 'supabase', client, email: session.user.email });
+    const member = await client.fetchMember();
+    if (!member) {
+      showBlockingMessage({
+        title: 'Conta sem acesso',
+        text: `A conta ${session.user.email} entrou, mas não está cadastrada como membro do Mawe OS. Peça para incluí-la na tabela "members" do Supabase (veja docs/SUPABASE.md).`,
+        canSignOut: true,
+      });
+      return null;
+    }
+    return { source: new SupabaseDataSource(client), initialDataset: 'empty', lockedUserId: member.appUserId };
+  } catch (error) {
+    if (error instanceof AuthRequiredError) {
+      showLogin(client, { text: error.message, tone: 'info' });
+    } else {
+      showBlockingMessage({ title: 'Não foi possível abrir o Mawe OS', text: error instanceof Error ? error.message : String(error), canRetry: true, canSignOut: true });
+    }
+    return null;
+  }
+}
+
 async function start(): Promise<void> {
   installEventDelegation();
   onActionError((error) => {
-    console.error(error);
+    // A mensagem já aparece na tela; no console fica só como aviso (ex.: validação de formulário).
+    console.warn(error);
+    if (error instanceof AuthRequiredError) {
+      window.location.reload();
+      return;
+    }
     toast(error instanceof Error ? error.message : 'Algo deu errado.', 'error');
   });
 
-  const store = await Store.open({ source: pickDataSource(), profileStorage: window.localStorage });
-  setStore(store);
   await loadBrandAssets();
+  const access = await prepareAccess();
+  if (!access) return;
+
+  let store: Store;
+  try {
+    store = await Store.open(access);
+  } catch (error) {
+    if (error instanceof AuthRequiredError) return window.location.reload();
+    showBlockingMessage({ title: 'Não foi possível carregar os dados', text: error instanceof Error ? error.message : String(error), canRetry: true, canSignOut: Boolean(access.lockedUserId) });
+    return;
+  }
+  setStore(store);
+  if (access.lockedUserId) startSync(store);
 
   setRenderer(render);
   store.subscribe(render);

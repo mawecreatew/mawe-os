@@ -30,7 +30,11 @@ const TYPES = {
   '.woff': 'font/woff',
 };
 
+// Usado apenas pelos testes automatizados, para apontar para um Supabase de teste.
+const CONFIG_OVERRIDE = process.env.MAWE_CONFIG_PATH ? resolve(process.env.MAWE_CONFIG_PATH) : null;
+
 function resolveRequest(urlPath) {
+  if (CONFIG_OVERRIDE && urlPath.split('?')[0] === '/public/config.json') return CONFIG_OVERRIDE;
   const clean = normalize(decodeURIComponent(urlPath.split('?')[0])).replace(/^([/\\])+/, '');
   if (clean === '' || clean === 'index.html') return join(ROOT, 'index.html');
   const posix = clean.split(sep).join('/');

@@ -5,7 +5,7 @@ import { BRAND } from '../config/brand.ts';
 import { overdueTasks, pipelineSummary } from '../domain/selectors.ts';
 import { avatar } from '../ui/components.ts';
 import { icon, type IconName } from '../ui/icons.ts';
-import { brandAssets, store, today } from './context.ts';
+import { auth, brandAssets, store, today } from './context.ts';
 
 interface NavItem {
   section: string;
@@ -45,8 +45,35 @@ function brandBlock(): SafeHtml {
   return html`<span class="brand__name" title="Logo oficial ainda não adicionada (veja public/brand/LEIA-ME.md)">${BRAND.agencyName}</span>`;
 }
 
-export function renderSidebar(activeSection: string): SafeHtml {
+function renderProfile(): SafeHtml {
   const { data, currentUser } = store();
+  const session = auth();
+  if (session.mode === 'supabase') {
+    return html`
+      <div class="profile">
+        <span class="profile__label">Conectado como</span>
+        <div class="profile__account">
+          ${avatar(currentUser, 'md')}
+          <div class="profile__who"><strong>${currentUser.name}</strong><small>${session.email}</small></div>
+        </div>
+        <button type="button" class="btn btn--ghost btn--sm profile__logout" data-action="auth:logout">${icon('arrowLeft', 14)}<span>Sair</span></button>
+      </div>`;
+  }
+  return html`
+    <div class="profile">
+      <span class="profile__label">Perfil ativo</span>
+      <div class="profile__switch" role="group" aria-label="Trocar perfil ativo">
+        ${data.users.map(
+          (u) => html`<button type="button" class="${cx('profile__option', u.id === currentUser.id && 'is-active')}"
+            data-action="profile:switch" data-id="${u.id}" aria-pressed="${u.id === currentUser.id ? 'true' : 'false'}">
+            ${avatar(u)}<span>${u.shortName}</span></button>`,
+        )}
+      </div>
+      <p class="profile__note">${icon('lock', 13)} Sem autenticação — troca apenas para visualização.</p>
+    </div>`;
+}
+
+export function renderSidebar(activeSection: string): SafeHtml {
   return html`
     <div class="sidebar__brand">
       <a class="brand" href="#/painel" aria-label="${BRAND.productName} — Painel">
@@ -73,23 +100,24 @@ export function renderSidebar(activeSection: string): SafeHtml {
       <a class="${cx('nav__item', activeSection === 'sistema' && 'is-active')}" href="#/sistema" data-action="nav:close">
         ${icon('settings', 18)}<span class="nav__label">Sistema</span>
       </a>
-      <div class="profile">
-        <span class="profile__label">Perfil ativo</span>
-        <div class="profile__switch" role="group" aria-label="Trocar perfil ativo">
-          ${data.users.map(
-            (u) => html`<button type="button" class="${cx('profile__option', u.id === currentUser.id && 'is-active')}"
-              data-action="profile:switch" data-id="${u.id}" aria-pressed="${u.id === currentUser.id ? 'true' : 'false'}">
-              ${avatar(u)}<span>${u.shortName}</span></button>`,
-          )}
-        </div>
-        <p class="profile__note">${icon('lock', 13)} Sem autenticação — troca apenas para visualização.</p>
-      </div>
+      ${renderProfile()}
     </div>
   `;
 }
 
 export function renderPrototypeBanner(): SafeHtml {
   const dataset = store().data.meta.dataset;
+  if (auth().mode === 'supabase') {
+    return html`
+      <div class="env-banner env-banner--connected" role="note">
+        <span class="env-banner__dot" aria-hidden="true"></span>
+        <strong>Conectado</strong>
+        <span class="env-banner__sep" aria-hidden="true">·</span>
+        <span>Dados compartilhados entre os sócios (Supabase)</span>
+        <a class="env-banner__link" href="#/sistema">Detalhes</a>
+      </div>
+    `;
+  }
   return html`
     <div class="env-banner" role="note">
       <span class="env-banner__dot" aria-hidden="true"></span>
@@ -104,6 +132,11 @@ export function renderPrototypeBanner(): SafeHtml {
 }
 
 registerActions({
+  'auth:logout': async () => {
+    const session = auth();
+    if (session.mode === 'supabase') await session.client.signOut();
+    window.location.reload();
+  },
   'profile:switch': (el) => store().setCurrentUser(el.dataset.id!),
   'nav:open': () => document.body.classList.add('nav-open'),
   'nav:close': () => document.body.classList.remove('nav-open'),

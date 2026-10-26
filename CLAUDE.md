@@ -8,3 +8,5 @@
 - Cores e fontes só via variáveis de `src/styles/tokens.css`.
 - Não simular respostas de IA, não conectar serviços externos e não inventar logos (ver `public/brand/LEIA-ME.md`).
 - Dados de demonstração são fictícios (`src/data/seed.ts`); nunca incluir dados reais de clientes.
+- Dois modos de abertura (`src/main.ts`): sem `public/config.json` → protótipo local; com ele → login Supabase obrigatório e dados compartilhados (`src/integrations/supabase/`, guia em `docs/SUPABASE.md`).
+- Mudanças em `supabase/schema.sql` devem manter os testes de `supabase/tests/` passando. Nunca usar a chave secreta (service_role) no navegador.

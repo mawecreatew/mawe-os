@@ -293,3 +293,74 @@
 @media (max-width: 600px) {
   .env-banner__hide-sm { display: none; }
 }
+
+/* ------------------------------------------------------------ Tela de login */
+
+.auth-screen .sidebar,
+.auth-screen .topbar,
+.auth-screen #banner,
+.auth-screen .scrim { display: none; }
+
+.auth-screen .main-area { margin-left: 0; }
+
+.auth-screen .view { max-width: none; padding: 0; }
+
+.auth-wrap {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-6) var(--space-4);
+  background:
+    linear-gradient(180deg, var(--brown-900) 0, var(--brown-900) 38vh, var(--bg) 38vh);
+}
+
+.auth-card {
+  width: min(420px, 100%);
+  padding: var(--space-8);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.auth-card__brand {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: var(--space-8);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--line);
+}
+
+.auth-card__brand .brand__product { color: var(--gold-600); }
+.auth-card__logo { max-width: 200px; max-height: 48px; object-fit: contain; align-self: flex-start; }
+.auth-card__name { font-family: var(--font-display); font-size: 1.5rem; color: var(--brown-900); line-height: 1.1; }
+.auth-card__title { font-size: var(--text-2xl); }
+.auth-card__text { margin: var(--space-2) 0 var(--space-6); color: var(--text-2); }
+.auth-card__foot { margin-top: var(--space-5); font-size: var(--text-xs); color: var(--text-3); }
+.auth-card .form { gap: var(--space-4); }
+.auth-card .btn--block { margin-top: var(--space-2); min-height: 42px; }
+
+.auth-message {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: calc(-1 * var(--space-2)) 0 var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
+
+.auth-message .icon { margin-top: 2px; }
+.auth-message--error { background: var(--danger-bg); color: var(--danger-fg); }
+.auth-message--info { background: var(--info-bg); color: var(--info-fg); }
+
+/* ------------------------------------------------------------ Conta conectada no menu */
+
+.profile__account { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.profile__who { display: flex; flex-direction: column; min-width: 0; }
+.profile__who strong { color: var(--cream-0); font-weight: 500; font-size: var(--text-sm); }
+.profile__who small { color: var(--text-on-dark-2); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar .profile__logout { margin-top: var(--space-3); color: var(--text-on-dark-2); padding-left: 6px; }
+.sidebar .profile__logout:hover { background: rgb(243 235 223 / 0.08); color: var(--cream-0); }
+.env-banner--connected .env-banner__dot { background: #6f9a6a; }

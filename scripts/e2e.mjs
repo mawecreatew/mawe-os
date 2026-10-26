@@ -1,8 +1,10 @@
 // Teste de navegação ponta a ponta: abre o Mawe OS num navegador real (Chromium,
 // via Playwright) e executa os fluxos principais. Rode com: npm run test:e2e
 import { spawn } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
+import { FAKE_ANON_KEY, startFakeSupabase } from './fake-supabase.mjs';
 
 const require = createRequire(import.meta.url);
 let chromium;
@@ -13,10 +15,24 @@ try {
   process.exit(1);
 }
 
+async function startAppServer(port, env = {}) {
+  const child = spawn(process.execPath, ['scripts/serve.mjs'], { env: { ...process.env, PORT: String(port), ...env }, stdio: 'pipe' });
+  await new Promise((resolve) => child.stdout.once('data', resolve));
+  return child;
+}
+
 const PORT = 5199;
 const BASE = `http://127.0.0.1:${PORT}/`;
-const server = spawn(process.execPath, ['scripts/serve.mjs'], { env: { ...process.env, PORT: String(PORT) }, stdio: 'pipe' });
-await new Promise((resolve) => server.stdout.once('data', resolve));
+const server = await startAppServer(PORT);
+
+// Segunda instância, com login: aponta para um Supabase simulado local.
+const SUPA_PORT = 54392;
+const LOGIN_PORT = 5198;
+const LOGIN_BASE = `http://127.0.0.1:${LOGIN_PORT}/`;
+mkdirSync('test-results', { recursive: true });
+writeFileSync('test-results/config.json', JSON.stringify({ supabaseUrl: `http://127.0.0.1:${SUPA_PORT}`, supabaseAnonKey: FAKE_ANON_KEY }));
+const fakeSupabase = await startFakeSupabase(SUPA_PORT);
+const loginServer = await startAppServer(LOGIN_PORT, { MAWE_CONFIG_PATH: 'test-results/config.json' });
 
 const browser = await chromium.launch();
 const context = await browser.newContext({ viewport: { width: 1366, height: 900 }, locale: 'pt-BR' });
@@ -280,6 +296,127 @@ try {
     assert.ok(overflow <= 0, `rolagem horizontal indesejada: ${overflow}px`);
   });
 
+  console.log('\nCom login (Supabase simulado)\n');
+  const titleOf = (p) => p.locator('.page-title, .auth-card__title').first().innerText();
+  async function expectTitleOn(p, expected) {
+    const matches = (text) => (expected instanceof RegExp ? expected.test(text) : text === expected);
+    const deadline = Date.now() + 5000;
+    let text = '';
+    while (Date.now() < deadline) {
+      text = await titleOf(p).catch(() => '');
+      if (matches(text)) return;
+      await p.waitForTimeout(50);
+    }
+    assert.fail(`título esperado ${expected}, encontrado "${text}"`);
+  }
+  async function login(p, email, password) {
+    await p.locator('#login-email').fill(email);
+    await p.locator('#login-password').fill(password);
+    await p.getByRole('button', { name: 'Entrar' }).click();
+  }
+  const watchErrors = (p) => {
+    p.on('pageerror', (e) => errors.push(String(e)));
+    p.on('console', (m) => {
+      if (m.type() === 'error' && !/404|Failed to load resource|status of 40[01]/.test(m.text())) errors.push(m.text());
+    });
+  };
+
+  const mariaContext = await browser.newContext({ viewport: { width: 1366, height: 900 }, locale: 'pt-BR' });
+  const maria = await mariaContext.newPage();
+  watchErrors(maria);
+
+  await step('sem login, o sistema mostra apenas a tela de entrada', async () => {
+    await maria.goto(LOGIN_BASE + '#/clientes');
+    await expectTitleOn(maria, 'Entrar');
+    assert.equal(await maria.locator('.sidebar').isVisible(), false);
+    assert.equal(await maria.locator('.client-card').count(), 0);
+  });
+
+  await step('senha errada mostra mensagem clara', async () => {
+    await login(maria, 'maria@example.com', 'senha-errada');
+    await maria.locator('.auth-message--error', { hasText: 'E-mail ou senha incorretos.' }).waitFor();
+    assert.equal(await maria.locator('#login-email').inputValue(), 'maria@example.com');
+  });
+
+  await step('conta que não é membro não acessa os dados', async () => {
+    await login(maria, 'intruso@example.com', 'senha-do-intruso-123');
+    await expectTitleOn(maria, 'Conta sem acesso');
+    await maria.getByRole('button', { name: 'Sair' }).click();
+    await expectTitleOn(maria, 'Entrar');
+  });
+
+  await step('Maria entra e começa com a base vazia, sem dados fictícios', async () => {
+    await login(maria, 'maria@example.com', 'senha-da-maria-123');
+    await expectTitleOn(maria, 'Clientes'); // volta para a página que tinha sido pedida
+    assert.ok((await maria.locator('.empty-state').count()) > 0);
+    await maria.goto(LOGIN_BASE + '#/painel');
+    await expectTitleOn(maria, /, Maria Eduarda\.$/);
+    assert.match(await maria.locator('.env-banner').innerText(), /Conectado/);
+    assert.match(await maria.locator('.profile').innerText(), /maria@example\.com/);
+    assert.equal(await maria.locator('.profile__switch').count(), 0, 'não deve haver troca de perfil com login');
+    assert.equal(await maria.locator('.demo-tag').count(), 0);
+  });
+
+  await step('Maria cria uma tarefa para o Wesley', async () => {
+    await maria.goto(LOGIN_BASE + '#/tarefas');
+    await maria.getByRole('button', { name: 'Nova tarefa' }).first().click();
+    await maria.locator('dialog.modal input[name=title]').fill('Revisar contrato do cliente');
+    await maria.locator('dialog.modal select[name=assigneeId]').selectOption('wesley');
+    await maria.locator('dialog.modal button[type=submit]').click();
+    await maria.getByText('Revisar contrato do cliente').waitFor();
+    assert.equal(fakeSupabase.workspace.version, 2, 'deveria ter gravado no Supabase');
+  });
+
+  const wesleyContext = await browser.newContext({ viewport: { width: 1366, height: 900 }, locale: 'pt-BR' });
+  const wesley = await wesleyContext.newPage();
+  watchErrors(wesley);
+
+  await step('Wesley entra no próprio navegador e vê a tarefa da Maria', async () => {
+    await wesley.goto(LOGIN_BASE);
+    await login(wesley, 'wesley@example.com', 'senha-do-wesley-123');
+    await expectTitleOn(wesley, /, Wesley\.$/);
+    await wesley.goto(LOGIN_BASE + '#/tarefas');
+    await wesley.getByText('Revisar contrato do cliente').waitFor();
+  });
+
+  await step('alteração do Wesley aparece para a Maria sem recarregar', async () => {
+    await wesley.locator('tr', { hasText: 'Revisar contrato do cliente' }).locator('input[type=checkbox]').click();
+    await wesley.locator('.toast', { hasText: 'Tarefa concluída.' }).waitFor();
+    await maria.locator('.segmented__item', { hasText: 'Concluídas' }).click();
+    await maria.evaluate(() => (document.activeElement instanceof HTMLElement ? document.activeElement.blur() : null));
+    await maria.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await maria.getByText('Revisar contrato do cliente').waitFor();
+  });
+
+  await step('tela Sistema mostra login ativo e esconde ações que apagam dados', async () => {
+    await maria.goto(LOGIN_BASE + '#/sistema');
+    await expectTitleOn(maria, 'Sistema');
+    assert.match(await maria.locator('.integrations').innerText(), /Autenticação\s*\n?.*Ativa/s);
+    assert.equal(await maria.getByRole('button', { name: 'Começar com base vazia' }).count(), 0);
+  });
+
+  await step('Maria troca a senha, sai e entra com a nova senha', async () => {
+    await maria.locator('input[name=password]').fill('curta');
+    await maria.locator('input[name=confirm]').fill('curta');
+    await maria.getByRole('button', { name: 'Alterar senha' }).click();
+    await maria.locator('.toast--error', { hasText: 'pelo menos 10 caracteres' }).waitFor();
+    await maria.locator('input[name=password]').fill('nova-senha-maria-2026');
+    await maria.locator('input[name=confirm]').fill('nova-senha-maria-2026');
+    await maria.getByRole('button', { name: 'Alterar senha' }).click();
+    await maria.locator('.toast', { hasText: 'Senha alterada' }).waitFor();
+    await maria.locator('.profile__logout').click();
+    await expectTitleOn(maria, 'Entrar');
+    await maria.reload();
+    await expectTitleOn(maria, 'Entrar');
+    await login(maria, 'maria@example.com', 'senha-da-maria-123');
+    await maria.locator('.auth-message--error').waitFor();
+    await login(maria, 'maria@example.com', 'nova-senha-maria-2026');
+    await expectTitleOn(maria, 'Sistema');
+  });
+
+  await mariaContext.close();
+  await wesleyContext.close();
+
   assert.deepEqual(errors, [], 'erros no console do navegador');
   console.log(`\n${passed} verificações de navegação passaram, sem erros no console.`);
 } catch (error) {
@@ -288,4 +425,6 @@ try {
 } finally {
   await browser.close();
   server.kill();
+  loginServer.kill();
+  fakeSupabase.server.close();
 }

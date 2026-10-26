@@ -3,9 +3,12 @@
 Escritório digital privado da **Mawe Create** — operação diária, comercial, clientes,
 projetos, tarefas, biblioteca e agentes de IA, compartilhado por Maria Eduarda e Wesley.
 
-> **Status: protótipo local (v0.1).** Funciona de verdade no navegador, mas ainda **sem
-> login, sem banco de dados compartilhado e sem IA conectada**. Os dados ficam salvos
-> apenas no navegador de quem está usando. Os registros iniciais são **fictícios**.
+> **Status: v0.2.** Funciona de verdade no navegador. Tem dois modos:
+> - **Protótipo local** (padrão): sem login, com dados **fictícios** salvos só neste navegador.
+> - **Com login (Supabase)**: cada sócio entra com sua conta e os dois veem os mesmos dados.
+>   Para ativar, siga [`docs/SUPABASE.md`](docs/SUPABASE.md).
+>
+> A IA ainda **não está conectada**.
 
 ## Como rodar
 
@@ -57,8 +60,8 @@ O teste de navegação usa o Playwright. Se for a primeira vez na sua máquina, 
 
 | Item                     | Situação hoje                              | Onde integrar                       |
 | ------------------------ | ------------------------------------------ | ----------------------------------- |
-| Login individual         | Troca de perfil apenas visual, sem senha   | `src/domain/permissions.ts`, `src/data/store.ts` |
-| Banco de dados           | `localStorage` (cada navegador tem o seu)  | Nova classe em `src/data/source.ts` |
+| Login individual         | ✅ Pronto com Supabase (ativar pelo guia)   | [`docs/SUPABASE.md`](docs/SUPABASE.md) |
+| Banco de dados           | ✅ Pronto com Supabase; sem ele, `localStorage` | `src/integrations/supabase/` |
 | Modelo de IA             | Não conectado; nenhuma resposta é gerada   | `src/agents/provider.ts` (via servidor) |
 | GitHub                   | Apenas o link do repositório               | Futuro módulo em `src/integrations/` |
 | Publicação               | Roda só em `127.0.0.1`                     | Depois do login e do banco          |
