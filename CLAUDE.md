@@ -10,3 +10,4 @@
 - Dados de demonstração são fictícios (`src/data/seed.ts`); nunca incluir dados reais de clientes.
 - Dois modos de abertura (`src/main.ts`): sem `public/config.json` → protótipo local; com ele → login Supabase obrigatório e dados compartilhados (`src/integrations/supabase/`, guia em `docs/SUPABASE.md`).
 - Mudanças em `supabase/schema.sql` devem manter os testes de `supabase/tests/` passando. Nunca usar a chave secreta (service_role) no navegador.
+- Publicação: Netlify (`netlify.toml`, `scripts/build-site.mjs` → `dist/`, guia em `docs/PUBLICACAO.md`). O site publicado sempre exige login; só a chave pública do Supabase pode ir para o `netlify.toml`.

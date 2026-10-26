@@ -6,3 +6,4 @@ test-results/
 
 # Configuração do Supabase de cada computador (veja docs/SUPABASE.md)
 public/config.json
+dist/

@@ -3,7 +3,7 @@
 Escritório digital privado da **Mawe Create** — operação diária, comercial, clientes,
 projetos, tarefas, biblioteca e agentes de IA, compartilhado por Maria Eduarda e Wesley.
 
-> **Status: v0.2.** Funciona de verdade no navegador. Tem dois modos:
+> **Status: v0.3.** Funciona de verdade no navegador. Tem dois modos:
 > - **Protótipo local** (padrão): sem login, com dados **fictícios** salvos só neste navegador.
 > - **Com login (Supabase)**: cada sócio entra com sua conta e os dois veem os mesmos dados.
 >   Para ativar, siga [`docs/SUPABASE.md`](docs/SUPABASE.md).
@@ -34,6 +34,7 @@ arquivo salvo — basta recarregar a página.
 | `npm run test:e2e`   | Abre o sistema num navegador automatizado e testa os fluxos principais |
 | `npm run typecheck`  | Verifica erros de tipo no TypeScript                                  |
 | `npm run check`      | Roda todas as verificações acima                                      |
+| `npm run build:site` | Monta a pasta `dist/` para publicar (exige a configuração do Supabase) |
 
 O teste de navegação usa o Playwright. Se for a primeira vez na sua máquina, rode também
 `npx playwright install chromium`.
@@ -64,7 +65,7 @@ O teste de navegação usa o Playwright. Se for a primeira vez na sua máquina, 
 | Banco de dados           | ✅ Pronto com Supabase; sem ele, `localStorage` | `src/integrations/supabase/` |
 | Modelo de IA             | Não conectado; nenhuma resposta é gerada   | `src/agents/provider.ts` (via servidor) |
 | GitHub                   | Apenas o link do repositório               | Futuro módulo em `src/integrations/` |
-| Publicação               | Roda só em `127.0.0.1`                     | Depois do login e do banco          |
+| Publicação               | ✅ Pronta para o Netlify (com login obrigatório) | [`docs/PUBLICACAO.md`](docs/PUBLICACAO.md) |
 
 ## Logos
 

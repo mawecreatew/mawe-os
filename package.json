@@ -1,8 +1,8 @@
 {
   "name": "mawe-os",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "Mawe OS — escritório digital privado da Mawe Create (protótipo local).",
+  "description": "Mawe OS — escritório digital privado da Mawe Create.",
   "type": "module",
   "engines": {
     "node": ">=22.18"
@@ -11,6 +11,7 @@
     "build": "tsc -p tsconfig.json",
     "dev": "node scripts/dev.mjs",
     "start": "npm run build && node scripts/serve.mjs",
+    "build:site": "npm run build && node scripts/build-site.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tests/tsconfig.json",
     "test": "node --test \"tests/**/*.test.ts\"",
     "test:e2e": "npm run build && node scripts/e2e.mjs",

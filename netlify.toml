@@ -1,0 +1,27 @@
+# Publicação do Mawe OS no Netlify (veja docs/PUBLICACAO.md).
+
+[build]
+  command = "npm run build:site"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+  # Ferramenta de testes: não precisa baixar navegadores na publicação.
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1"
+  # Endereço do projeto e chave PÚBLICA do Supabase (feitas para ficar no navegador).
+  # A proteção dos dados vem do login e das regras RLS (supabase/schema.sql).
+  # NUNCA coloque aqui a chave secreta (service_role / sb_secret_...).
+  SUPABASE_URL = "https://dtbupqjavsweiuykxnlp.supabase.co"
+  SUPABASE_ANON_KEY = "sb_publishable_5psUGU1TsZ6z7wp6kw_W-w_JxnqPH9C"
+
+# Proteções do navegador para todas as páginas.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://*.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    X-Robots-Tag = "noindex, nofollow"
+    Cache-Control = "no-cache"

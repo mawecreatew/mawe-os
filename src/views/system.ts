@@ -53,6 +53,10 @@ registerActions({
   },
 });
 
+function isLocalAddress(hostname: string): boolean {
+  return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '';
+}
+
 function integration(name: string, status: string, tone: 'neutral' | 'warning' | 'success', detail: string): SafeHtml {
   return html`<li class="integration">
     <div><strong>${name}</strong><p>${detail}</p></div>
@@ -96,7 +100,9 @@ export const systemView: View = {
                 : integration('Banco de dados compartilhado', 'Não configurado', 'warning', `Hoje os dados ficam em: ${source.label}. Cada navegador tem sua própria cópia — não há sincronização entre os sócios.`)}
               ${integration('Modelo de IA', aiProvider.connected ? 'Conectado' : 'Não conectado', aiProvider.connected ? 'success' : 'warning', 'Os agentes registram pedidos, mas não geram respostas. A integração deve passar por um servidor que guarde a chave de API.')}
               ${integration('GitHub', 'Não conectado', 'neutral', 'Os projetos guardam apenas o link do repositório. Nenhum acesso ao GitHub é feito.')}
-              ${integration('Publicação na internet', 'Não publicado', 'neutral', 'O sistema roda somente neste computador (127.0.0.1).')}
+              ${isLocalAddress(window.location.hostname)
+                ? integration('Publicação na internet', 'Não publicado', 'neutral', 'Esta cópia roda somente neste computador (127.0.0.1).')
+                : integration('Publicação na internet', 'Publicado', 'success', `Acessível em ${window.location.host}. Só quem tem conta cadastrada consegue entrar.`)}
             </ul>`,
           })}
 
