@@ -18,6 +18,10 @@ import type { View } from './app/view.ts';
 import { emptyState, pageHeader } from './ui/components.ts';
 import { toast } from './ui/overlay.ts';
 import { agentsView } from './views/agents.ts';
+import { calendarView } from './views/calendar.ts';
+import { financeView } from './views/finance.ts';
+import { servicesView } from './views/services.ts';
+import { trafficView } from './views/traffic.ts';
 import { clientsView } from './views/clients.ts';
 import { commercialView } from './views/commercial.ts';
 import { dashboardView } from './views/dashboard.ts';
@@ -31,7 +35,11 @@ const ROUTES: Record<string, View> = {
   comercial: commercialView,
   clientes: clientsView,
   projetos: projectsView,
+  calendario: calendarView,
   tarefas: tasksView,
+  financeiro: financeView,
+  trafego: trafficView,
+  servicos: servicesView,
   biblioteca: libraryView,
   agentes: agentsView,
   sistema: systemView,

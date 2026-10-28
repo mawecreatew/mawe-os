@@ -5,7 +5,7 @@
  */
 import { formatShortDate } from '../core/dates.ts';
 import { formatCurrency } from '../core/format.ts';
-import { labelOf, OPPORTUNITY_STAGES } from '../domain/labels.ts';
+import { stageLabel } from '../domain/labels.ts';
 import { peopleNames } from '../domain/people.ts';
 import type { AppData, Opportunity } from '../domain/types.ts';
 
@@ -13,7 +13,7 @@ export function opportunityBriefing(data: AppData, opp: Opportunity, includeValu
   const lines = [
     `Oportunidade: ${opp.company} (${opp.segment})`,
     `Contato: ${opp.contactName} · Origem: ${opp.source}`,
-    `Etapa atual: ${labelOf(OPPORTUNITY_STAGES, opp.stage)}`,
+    `Etapa atual: ${stageLabel(data, opp.stage)}`,
     `Responsável: ${peopleNames(data, opp.ownerIds, '—')}`,
   ];
   if (includeValue) {

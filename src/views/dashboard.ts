@@ -1,10 +1,14 @@
 /** Painel inicial: visão do dia para o perfil ativo e resumo da agência. */
-import { formatShortDate, formatWeekday, relativeDay } from '../core/dates.ts';
-import { formatCurrency, pluralize } from '../core/format.ts';
-import { cx, html } from '../core/html.ts';
+import { formatShortDate, formatWeekday, monthKey, monthLabel, relativeDay, shiftMonth } from '../core/dates.ts';
+import { registerActions, registerForms } from '../core/events.ts';
+import { formatCurrency, parseMoney, pluralize } from '../core/format.ts';
+import { cx, html, type SafeHtml } from '../core/html.ts';
 import { AGENTS } from '../agents/definitions.ts';
 import { aiProvider } from '../agents/provider.ts';
-import { OPEN_STAGES, OPPORTUNITY_STAGES, labelOf } from '../domain/labels.ts';
+import { TRACKED_SOURCES, goalsFor, monthIndicators, setMonthlyGoals } from '../domain/business.ts';
+import { upcomingBills } from '../domain/finance.ts';
+import { openStages, stageLabel } from '../domain/labels.ts';
+import type { MonthlyGoals } from '../domain/types.ts';
 import {
   activeProjects,
   currentStage,
@@ -18,9 +22,11 @@ import {
   upcomingDeadlines,
   type Deadline,
 } from '../domain/selectors.ts';
-import { allowed, store, today } from '../app/context.ts';
+import { allowed, requirePermission, store, today } from '../app/context.ts';
 import type { View } from '../app/view.ts';
 import { avatarStack, button, emptyState, pageHeader, panel, progressBar, statCard } from '../ui/components.ts';
+import { formActions, textField } from '../ui/forms.ts';
+import { closeModal, openModal, toast } from '../ui/overlay.ts';
 import { icon, type IconName } from '../ui/icons.ts';
 import { taskList, taskRow } from '../ui/task-row.ts';
 
@@ -30,6 +36,106 @@ const DEADLINE_ICON: Record<Deadline['kind'], IconName> = {
   followup: 'commercial',
   installment: 'money',
 };
+
+// ---------------------------------------------------------------- Metas e indicadores
+
+function goalBar(label: string, current: number, goal: number | null, format: (n: number) => string, extra?: SafeHtml): SafeHtml {
+  const pct = goal ? Math.min(100, (current / goal) * 100) : 0;
+  const reached = goal !== null && goal > 0 && current >= goal;
+  return html`<div class="${cx('goal', reached && 'is-reached')}">
+    <div class="goal__head">
+      <span class="goal__label">${label}</span>
+      <span class="goal__value"><strong>${format(current)}</strong>${goal ? html` <small>de ${format(goal)}</small>` : html` <small class="muted">sem meta</small>`}</span>
+    </div>
+    ${goal ? progressBar(pct, label) : html`<div class="progress progress--empty" aria-hidden="true"></div>`}
+    ${extra ?? ''}
+    ${reached ? html`<span class="goal__badge">${icon('check', 12)} Meta batida!</span>` : ''}
+  </div>`;
+}
+
+function renderGoals(): SafeHtml {
+  const { data } = store();
+  const month = monthKey(today());
+  const finance = allowed('finance:view');
+  const { goals, inherited } = goalsFor(data, month);
+  const ind = monthIndicators(data, month);
+  const count = (n: number) => String(n);
+  const sources = [...TRACKED_SOURCES, 'Outras'].filter((s) => s !== 'Outras' || ind.contacts.bySource[s]);
+  return panel({
+    title: `Metas de ${monthLabel(month).replace('/', ' de ')}`,
+    icon: 'target',
+    className: 'goals-panel',
+    action: allowed('finance:edit') ? button({ label: 'Definir metas', action: 'goals:edit', icon: 'edit', variant: 'ghost', size: 'sm' }) : undefined,
+    body: html`
+      ${inherited ? html`<p class="muted small">${icon('info', 13)} Usando as metas do mês anterior até vocês definirem as deste mês.</p>` : ''}
+      <div class="goals">
+        ${finance ? goalBar('Faturamento do mês', ind.revenue, goals.revenue, (n) => formatCurrency(n), html`<span class="goal__hint">Tudo que entrou no Financeiro</span>`) : ''}
+        ${goalBar('Clientes novos', ind.newClients, goals.newClients, count)}
+        ${goalBar(
+          'Contatos de prospecção',
+          ind.contacts.total,
+          goals.contacts,
+          count,
+          html`<span class="goal__sources">${sources.map(
+            (src) => html`<span>${src}: <strong>${ind.contacts.bySource[src] ?? 0}</strong> · ${ind.replies.bySource[src] ?? 0} responderam</span>`,
+          )}</span>`,
+        )}
+        ${goalBar('Propostas enviadas', ind.proposalsSent, goals.proposalsSent, count)}
+        ${goalBar('Propostas aceitas', ind.proposalsAccepted, goals.proposalsAccepted, count, ind.proposalsSent ? html`<span class="goal__hint">${Math.round((ind.proposalsAccepted / ind.proposalsSent) * 100)}% de aceite</span>` : undefined)}
+      </div>
+      <p class="panel__foot">${icon('info', 13)} Contatos e respostas vêm dos botões "Contato feito" e "Respondeu" de cada oportunidade no Comercial.</p>
+    `,
+  });
+}
+
+function openGoalsForm(): void {
+  const { data } = store();
+  const month = monthKey(today());
+  const { goals } = goalsFor(data, month);
+  const val = (n: number | null) => (n === null ? '' : String(n).replace('.', ','));
+  openModal({
+    title: `Metas de ${monthLabel(month)}`,
+    description: `Valem só para este mês. ${data.goals[shiftMonth(month, -1)] ? 'Os valores vêm preenchidos com as metas do mês anterior.' : ''}`,
+    body: html`
+      <form class="form" data-form="goals:save" data-month="${month}">
+        <div class="form-grid">
+          ${textField({ name: 'revenue', label: 'Faturamento (R$)', value: val(goals.revenue), inputmode: 'decimal', autofocus: true })}
+          ${textField({ name: 'newClients', label: 'Clientes novos', type: 'number', value: val(goals.newClients) })}
+          ${textField({ name: 'contacts', label: 'Contatos de prospecção', type: 'number', value: val(goals.contacts) })}
+          ${textField({ name: 'proposalsSent', label: 'Propostas enviadas', type: 'number', value: val(goals.proposalsSent) })}
+          ${textField({ name: 'proposalsAccepted', label: 'Propostas aceitas', type: 'number', value: val(goals.proposalsAccepted) })}
+        </div>
+        <p class="muted small">Deixe vazio o que não quiser acompanhar.</p>
+        ${formActions('Salvar metas')}
+      </form>
+    `,
+  });
+}
+
+registerActions({ 'goals:edit': () => openGoalsForm() });
+
+registerForms({
+  'goals:save': async (form, values) => {
+    requirePermission('finance:edit');
+    const read = (name: string) => {
+      const text = values.text(name);
+      if (!text) return null;
+      const n = parseMoney(text);
+      if (n === null) throw new Error('Use apenas números nas metas.');
+      return n;
+    };
+    const goals: MonthlyGoals = {
+      revenue: read('revenue'),
+      newClients: read('newClients'),
+      contacts: read('contacts'),
+      proposalsSent: read('proposalsSent'),
+      proposalsAccepted: read('proposalsAccepted'),
+    };
+    await store().apply((draft) => setMonthlyGoals(draft, form.dataset.month!, goals));
+    closeModal();
+    toast('Metas do mês salvas.');
+  },
+});
 
 export const dashboardView: View = {
   title: () => 'Painel',
@@ -41,7 +147,8 @@ export const dashboardView: View = {
     const priorities = todayPriorities(data, t, currentUser.id);
     const overdueAll = overdueTasks(data, t);
     const myPending = pendingTasks(data, t, currentUser.id).filter((x) => !priorities.includes(x)).slice(0, 5);
-    const deadlines = upcomingDeadlines(data, t, 14, { includeFinance: finance }).slice(0, 7);
+    const deadlines = upcomingDeadlines(data, t, 14).slice(0, 7);
+    const bills = finance ? upcomingBills(data, t, 7) : [];
     const pipeline = pipelineSummary(data, t);
     const projects = activeProjects(data);
     const funnelScale = Math.max(1, pipeline.openCount);
@@ -71,6 +178,8 @@ export const dashboardView: View = {
         })}
         ${statCard({ label: 'Projetos em andamento', value: String(projects.length), hint: projects[0] ? `Próxima entrega ${formatShortDate(projects[0].dueDate)}` : 'Nenhuma entrega prevista', href: '#/projetos' })}
       </div>
+
+      ${renderGoals()}
 
       <div class="dashboard-grid">
         <div class="dashboard-grid__main">
@@ -125,6 +234,28 @@ export const dashboardView: View = {
                 </ol>`
               : emptyState({ icon: 'calendar', compact: true, title: 'Nada previsto para os próximos 14 dias' }),
           })}
+
+          ${finance
+            ? panel({
+                title: 'Contas a pagar e a receber',
+                icon: 'wallet',
+                count: bills.length,
+                action: html`<a class="panel__link" href="#/financeiro">Financeiro ${icon('arrowRight', 14)}</a>`,
+                body: bills.length
+                  ? html`<ul class="bills">${bills.map(
+                      (m) => html`<li class="${cx('bill', m.dueDate < t && 'is-overdue')}">
+                        <input type="checkbox" class="check" data-change="finance:toggle" data-key="${m.key}" ${allowed('finance:edit') ? '' : 'disabled'}
+                          aria-label="Marcar como ${m.kind === 'entrada' ? 'recebida' : 'paga'}: ${m.description}" />
+                        <span class="bill__main">
+                          <span class="bill__title">${m.description}</span>
+                          <span class="bill__meta">${m.kind === 'entrada' ? 'A receber' : 'A pagar'} · ${m.dueDate < t ? html`<span class="text-danger">venceu ${relativeDay(m.dueDate, t)}</span>` : `${formatShortDate(m.dueDate)} · ${relativeDay(m.dueDate, t)}`}</span>
+                        </span>
+                        <span class="${cx('bill__amount', m.kind === 'entrada' ? 'text-success' : '')}">${m.kind === 'entrada' ? '+' : '−'} ${formatCurrency(m.amount, true)}</span>
+                      </li>`,
+                    )}</ul>`
+                  : emptyState({ icon: 'check', compact: true, title: 'Nenhuma conta vencendo nos próximos 7 dias' }),
+              })
+            : ''}
         </aside>
       </div>
 
@@ -136,10 +267,10 @@ export const dashboardView: View = {
           body: data.opportunities.length
             ? html`
               <div class="mini-funnel">
-                ${OPEN_STAGES.map((stage) => {
+                ${openStages(data).map((stage) => {
                   const count = pipeline.byStage[stage] ?? 0;
                   return html`<div class="mini-funnel__row">
-                    <span class="mini-funnel__label">${labelOf(OPPORTUNITY_STAGES, stage)}</span>
+                    <span class="mini-funnel__label">${stageLabel(data, stage)}</span>
                     <span class="mini-funnel__track"><span class="mini-funnel__bar" style="width:${(count / funnelScale) * 100}%"></span></span>
                     <span class="mini-funnel__value">${count}</span>
                   </div>`;

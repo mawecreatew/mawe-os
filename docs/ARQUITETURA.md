@@ -42,6 +42,19 @@ servidor no futuro.
 
 Se a operação lançar erro, nada é alterado e o erro aparece como aviso.
 
+## Áreas adicionadas na v0.4
+
+- `domain/normalize.ts`: completa dados salvos por versões anteriores (funil, financeiro,
+  tipos de projeto etc.) de forma **determinística** — os dois sócios chegam ao mesmo
+  resultado, e a sincronização não acusa diferença. O `schemaVersion` continua 1, então
+  não é preciso mexer no Supabase.
+- `domain/finance.ts`: lançamentos, despesas recorrentes (ocorrências calculadas na hora e
+  gravadas só quando pagas) e a visão unificada com as parcelas de clientes.
+- `domain/business.ts`: calendário de conteúdo, tráfego pago, catálogo de serviços,
+  propostas (aceite cria cliente, projetos e parcelas) e metas/indicadores do mês.
+- Etapas do funil ficam em `AppData.pipelineStages`; `ganho` e `perdido` são fixas.
+- Tipos de projeto e seus modelos de etapas/checklist ficam em `domain/templates.ts`.
+
 ## Permissões
 
 `domain/permissions.ts` define o que cada papel pode fazer (`socio`, `colaborador`).

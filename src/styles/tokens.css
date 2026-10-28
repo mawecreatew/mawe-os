@@ -48,6 +48,16 @@
   --danger-fg: #983a2c;   --danger-bg: #f6e1dc;
   --accent-fg: #7a5a28;   --accent-bg: var(--gold-100);
 
+  /* Cores do calendário de conteúdo (uma por cliente; 0 = MaweCreate) */
+  --cal-0-bg: #3a2a20; --cal-0-fg: #efe8dc;
+  --cal-1-bg: #e5ecf0; --cal-1-fg: #3d566c;
+  --cal-2-bg: #e3ecdf; --cal-2-fg: #3c5f40;
+  --cal-3-bg: #f6e9cf; --cal-3-fg: #855610;
+  --cal-4-bg: #f6e1dc; --cal-4-fg: #983a2c;
+  --cal-5-bg: #ece3f1; --cal-5-fg: #5d4472;
+  --cal-6-bg: #f2e8d5; --cal-6-fg: #7a5a28;
+  --cal-7-bg: #e1ece9; --cal-7-fg: #335c56;
+
   /* Tipografia */
   --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, "URW Palladio L", "Book Antiqua", Georgia, serif;
   --font-body: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;

@@ -4,7 +4,7 @@ import { registerActions, registerForms } from '../core/events.ts';
 import { formatCurrency, parseMoney, pluralize } from '../core/format.ts';
 import { cx, html, multiline, type SafeHtml } from '../core/html.ts';
 import { navigate, type Route } from '../core/router.ts';
-import { CONTRACT_STATUSES, PROJECT_STATUSES, labelOf, toneOf } from '../domain/labels.ts';
+import { CONTRACT_STATUSES, PROJECT_STATUSES, PROPOSAL_STATUSES, labelOf, projectStatusLabel, toneOf } from '../domain/labels.ts';
 import {
   addInstallment,
   addPendingItem,
@@ -26,6 +26,7 @@ import { icon } from '../ui/icons.ts';
 import { closeModal, confirmAction, openModal, toast } from '../ui/overlay.ts';
 import { taskList, taskRow } from '../ui/task-row.ts';
 import { openProjectForm } from './projects.ts';
+import { openProposalForm, proposalsOfClient } from './proposals.ts';
 
 function openClientForm(client?: Client): void {
   const v: ClientInput = client ?? { company: '', contactName: '', segment: '', contact: {}, city: '', contractStatus: 'proposta_enviada', nextStep: '', notes: '' };
@@ -117,6 +118,7 @@ registerActions({
     if (client) openClientForm(client);
   },
   'client:new-project': (el) => openProjectForm(undefined, el.dataset.id),
+  'client:new-proposal': (el) => openProposalForm(undefined, { clientId: el.dataset.id }),
   'installment:new': (el) => openInstallmentForm(el.dataset.client!),
   'installment:toggle': async (el) => {
     requirePermission('finance:edit');
@@ -221,7 +223,7 @@ function renderPayments(client: Client): SafeHtml {
             })}
           </ul>`
         : emptyState({ icon: 'money', compact: true, title: 'Nenhuma parcela registrada', text: 'Registre as parcelas combinadas para acompanhar os recebimentos.' })}
-      <p class="panel__foot">${icon('info', 13)} Controle manual: marcar como paga não movimenta dinheiro.</p>
+      <p class="panel__foot">${icon('info', 13)} Controle manual: marcar como paga não movimenta dinheiro. As parcelas aparecem também no <a href="#/financeiro">Financeiro</a>.</p>
     `,
   });
 }
@@ -251,7 +253,7 @@ function renderDetail(client: Client): SafeHtml {
           body: projects.length
             ? html`<ul class="project-mini-list">${projects.map((p) => html`<li>
                 <a class="project-mini" href="#/projetos/${p.id}">
-                  <span class="project-mini__head"><span class="project-mini__name">${p.name}</span>${badge(labelOf(PROJECT_STATUSES, p.status), toneOf(PROJECT_STATUSES, p.status))}</span>
+                  <span class="project-mini__head"><span class="project-mini__name">${p.name}</span>${badge(projectStatusLabel(p.type, p.status), toneOf(PROJECT_STATUSES, p.status))}</span>
                   <span class="project-mini__progress">${progressBar(projectProgress(p))}<span>${projectProgress(p)}%</span></span>
                   <span class="project-mini__due">Entrega ${formatShortDate(p.dueDate)} · ${peopleNames(data, p.ownerIds, '')}</span>
                 </a></li>`)}</ul>`
@@ -259,6 +261,16 @@ function renderDetail(client: Client): SafeHtml {
         })}
 
         ${renderPayments(client)}
+
+        ${panel({
+          title: 'Propostas',
+          icon: 'file',
+          count: proposalsOfClient(data, client.id).length,
+          action: allowed('commercial:edit') ? button({ label: 'Nova proposta', action: 'client:new-proposal', variant: 'ghost', icon: 'plus', size: 'sm', data: { id: client.id } }) : undefined,
+          body: proposalsOfClient(data, client.id).length
+            ? html`<ul class="link-list">${proposalsOfClient(data, client.id).map((p) => html`<li><a href="#/comercial/propostas/${p.id}">${p.title}</a> ${badge(labelOf(PROPOSAL_STATUSES, p.status), toneOf(PROPOSAL_STATUSES, p.status))}</li>`)}</ul>`
+            : emptyState({ icon: 'file', compact: true, title: 'Nenhuma proposta para este cliente' }),
+        })}
 
         ${tasks.length
           ? panel({ title: 'Tarefas relacionadas', icon: 'tasks', count: tasks.length, body: taskList(tasks.map((task) => taskRow(data, task, t, { showRelated: false }))) })

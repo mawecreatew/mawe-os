@@ -2,11 +2,12 @@
 import { registerActions } from '../core/events.ts';
 import { cx, html, type SafeHtml } from '../core/html.ts';
 import { BRAND } from '../config/brand.ts';
+import { upcomingBills } from '../domain/finance.ts';
 import { overdueTasks, pipelineSummary } from '../domain/selectors.ts';
 import { teamMembers } from '../domain/people.ts';
 import { avatar } from '../ui/components.ts';
 import { icon, type IconName } from '../ui/icons.ts';
-import { auth, brandAssets, store, today } from './context.ts';
+import { allowed, auth, brandAssets, store, today } from './context.ts';
 
 interface NavItem {
   section: string;
@@ -14,6 +15,8 @@ interface NavItem {
   icon: IconName;
   count?: () => number;
   countTone?: 'alert' | 'muted';
+  /** Só aparece para quem pode ver dados financeiros. */
+  finance?: boolean;
 }
 
 const NAV: NavItem[] = [
@@ -27,6 +30,7 @@ const NAV: NavItem[] = [
   },
   { section: 'clientes', label: 'Clientes', icon: 'clients' },
   { section: 'projetos', label: 'Projetos', icon: 'projects' },
+  { section: 'calendario', label: 'Calendário', icon: 'calendar' },
   {
     section: 'tarefas',
     label: 'Tarefas',
@@ -34,6 +38,16 @@ const NAV: NavItem[] = [
     count: () => overdueTasks(store().data, today()).length,
     countTone: 'alert',
   },
+  {
+    section: 'financeiro',
+    label: 'Financeiro',
+    icon: 'wallet',
+    finance: true,
+    count: () => upcomingBills(store().data, today(), 0).length,
+    countTone: 'alert',
+  },
+  { section: 'trafego', label: 'Tráfego pago', icon: 'megaphone' },
+  { section: 'servicos', label: 'Serviços e preços', icon: 'tag' },
   { section: 'biblioteca', label: 'Biblioteca', icon: 'library' },
   { section: 'agentes', label: 'Central de agentes', icon: 'agents' },
 ];
@@ -85,7 +99,7 @@ export function renderSidebar(activeSection: string): SafeHtml {
     </div>
 
     <nav class="nav" aria-label="Navegação principal">
-      ${NAV.map((item) => {
+      ${NAV.filter((item) => !item.finance || allowed('finance:view')).map((item) => {
         const count = item.count?.() ?? 0;
         const active = item.section === activeSection;
         return html`

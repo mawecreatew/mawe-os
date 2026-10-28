@@ -6,6 +6,7 @@
  * `guest: true` e não têm acesso ao sistema.
  */
 import { createId } from '../core/id.ts';
+import { fillDefaults } from './normalize.ts';
 import type { AppData, ID, User } from './types.ts';
 
 /** Prefixo usado no formulário para uma pessoa digitada que ainda não existe. */
@@ -98,12 +99,12 @@ function upgrade(item: Legacy, single: 'assigneeId' | 'ownerId', list: 'assignee
 }
 
 /**
- * Converte dados salvos antes desta versão (um único responsável) para o
- * formato com lista. Pode ser chamada quantas vezes for preciso.
+ * Converte dados salvos por versões anteriores para o formato atual (lista de
+ * responsáveis e campos novos). Pode ser chamada quantas vezes for preciso.
  */
 export function normalizeData(data: AppData): AppData {
   for (const t of data.tasks as unknown as Legacy[]) upgrade(t, 'assigneeId', 'assigneeIds');
   for (const p of data.projects as unknown as Legacy[]) upgrade(p, 'ownerId', 'ownerIds');
   for (const o of data.opportunities as unknown as Legacy[]) upgrade(o, 'ownerId', 'ownerIds');
-  return data;
+  return fillDefaults(data);
 }

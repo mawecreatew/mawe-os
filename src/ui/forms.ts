@@ -13,7 +13,7 @@ interface BaseField {
 }
 
 export function textField(
-  options: BaseField & { value?: string | number | null; type?: 'text' | 'email' | 'date' | 'url' | 'tel' | 'number' | 'password'; placeholder?: string; inputmode?: string; autofocus?: boolean },
+  options: BaseField & { value?: string | number | null; type?: 'text' | 'email' | 'date' | 'url' | 'tel' | 'number' | 'password' | 'month' | 'time'; placeholder?: string; inputmode?: string; autofocus?: boolean },
 ): SafeHtml {
   const id = fieldId(options.name);
   return html`

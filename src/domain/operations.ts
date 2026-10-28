@@ -6,11 +6,12 @@
  * (e não nas telas) facilita testar e, no futuro, mover a lógica para um
  * servidor/banco de dados.
  */
-import { todayISO, type ISODate } from '../core/dates.ts';
+import { addMonths, isValidISODate, lastDayOfMonth, monthKey, monthLabel, shiftMonth, todayISO, type ISODate } from '../core/dates.ts';
 import { createId } from '../core/id.ts';
-import { labelOf, OPPORTUNITY_STAGES } from './labels.ts';
+import { FINAL_STAGES, WON_STAGE, isOpenStage, stageLabel } from './labels.ts';
+import { fixFinalStages } from './normalize.ts';
 import { resolvePeople } from './people.ts';
-import { DEFAULT_DELIVERY_CHECKLIST, DEFAULT_PRODUCTION_STAGES } from './templates.ts';
+import { PROJECT_TEMPLATES } from './templates.ts';
 import type {
   AgentId,
   AppData,
@@ -23,8 +24,12 @@ import type {
   LibraryItem,
   Opportunity,
   OpportunityStage,
+  PipelineStage,
   Project,
+  ProjectExtra,
+  ProjectType,
   StageStatus,
+  Tone,
   Task,
   TaskStatus,
 } from './types.ts';
@@ -112,20 +117,27 @@ export type OpportunityInput = Pick<
   | 'followUpDate'
   | 'ownerIds'
   | 'notes'
->;
+> & { contactedAt?: ISODate | null; repliedAt?: ISODate | null };
 
 function historyEntry(text: string, ctx: ActionContext) {
   return { id: createId('his'), at: ctx.now.toISOString(), authorId: ctx.userId, text };
 }
 
+function mustBeStage(draft: AppData, stage: OpportunityStage): void {
+  if (!draft.pipelineStages.some((s) => s.id === stage)) throw new Error('Etapa do funil não encontrada. Atualize a página e tente de novo.');
+}
+
 export function createOpportunity(draft: AppData, input: OpportunityInput, ctx: ActionContext): Opportunity {
+  mustBeStage(draft, input.stage);
   const opportunity: Opportunity = {
     id: createId('opp'),
     ...input,
     company: input.company.trim(),
     ownerIds: responsibles(draft, input.ownerIds),
-    history: [historyEntry(`Oportunidade cadastrada em "${labelOf(OPPORTUNITY_STAGES, input.stage)}".`, ctx)],
+    history: [historyEntry(`Oportunidade cadastrada em "${stageLabel(draft, input.stage)}".`, ctx)],
     clientId: null,
+    contactedAt: input.contactedAt ?? null,
+    repliedAt: input.repliedAt ?? null,
     createdAt: ctx.now.toISOString(),
   };
   draft.opportunities.push(opportunity);
@@ -135,12 +147,13 @@ export function createOpportunity(draft: AppData, input: OpportunityInput, ctx: 
 export function updateOpportunity(draft: AppData, id: ID, patch: Partial<OpportunityInput>, ctx: ActionContext): void {
   const opp = mustFind(draft.opportunities, id, 'Oportunidade');
   const previousStage = opp.stage;
+  if (patch.stage !== undefined) mustBeStage(draft, patch.stage);
   Object.assign(opp, patch);
   if (patch.ownerIds !== undefined) opp.ownerIds = responsibles(draft, patch.ownerIds);
   if (patch.stage && patch.stage !== previousStage) {
     opp.history.push(
       historyEntry(
-        `Etapa alterada: ${labelOf(OPPORTUNITY_STAGES, previousStage)} → ${labelOf(OPPORTUNITY_STAGES, patch.stage)}.`,
+        `Etapa alterada: ${stageLabel(draft, previousStage)} → ${stageLabel(draft, patch.stage)}.`,
         ctx,
       ),
     );
@@ -181,9 +194,123 @@ export function convertOpportunityToClient(draft: AppData, id: ID, ctx: ActionCo
     ctx,
   );
   opp.clientId = client.id;
-  if (opp.stage !== 'ganho') moveOpportunity(draft, id, 'ganho', ctx);
+  if (opp.stage !== WON_STAGE) moveOpportunity(draft, id, WON_STAGE, ctx);
   opp.history.push(historyEntry('Convertida em cliente.', ctx));
   return client;
+}
+
+/** Marca (ou desmarca, com `null`) o dia do contato de prospecção ou da resposta. */
+export function setOpportunityMilestone(
+  draft: AppData,
+  id: ID,
+  field: 'contactedAt' | 'repliedAt',
+  date: ISODate | null,
+  ctx: ActionContext,
+): void {
+  const opp = mustFind(draft.opportunities, id, 'Oportunidade');
+  if (date !== null && !isValidISODate(date)) throw new Error('Data inválida.');
+  opp[field] = date;
+  // Quem respondeu, obviamente, recebeu contato.
+  if (field === 'repliedAt' && date && !opp.contactedAt) opp.contactedAt = date;
+  if (field === 'contactedAt' && date === null) opp.repliedAt = null;
+  const text =
+    field === 'contactedAt'
+      ? date ? 'Contato de prospecção registrado.' : 'Registro de contato removido.'
+      : date ? 'Resposta da empresa registrada.' : 'Registro de resposta removido.';
+  opp.history.push(historyEntry(text, ctx));
+}
+
+// ---------------------------------------------------------------- Etapas do funil
+
+function cleanStageLabel(label: string): string {
+  const clean = label.replace(/\s+/g, ' ').trim().slice(0, 40);
+  if (!clean) throw new Error('Digite o nome da etapa.');
+  return clean;
+}
+
+function stageSlug(label: string): string {
+  return (
+    label
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, '')
+      .slice(0, 24) || 'etapa'
+  );
+}
+
+/** Adiciona uma etapa aberta, antes de "Ganho" (ou depois de `afterId`, se informado). */
+export function addPipelineStage(draft: AppData, label: string, tone: Tone = 'neutral', afterId?: OpportunityStage): PipelineStage {
+  const name = cleanStageLabel(label);
+  if (draft.pipelineStages.some((s) => s.label.toLocaleLowerCase('pt-BR') === name.toLocaleLowerCase('pt-BR'))) {
+    throw new Error(`Já existe uma etapa chamada "${name}".`);
+  }
+  let id = stageSlug(name);
+  if (draft.pipelineStages.some((s) => s.id === id)) id = `${id}_${createId('x').slice(2, 7)}`;
+  const stage: PipelineStage = { id, label: name, tone: tone === 'success' || tone === 'danger' ? 'neutral' : tone };
+  const open = draft.pipelineStages.filter((s) => !FINAL_STAGES.includes(s.id));
+  const index = afterId ? open.findIndex((s) => s.id === afterId) + 1 : open.length;
+  open.splice(index > 0 ? index : open.length, 0, stage);
+  draft.pipelineStages = fixFinalStages([...open, ...draft.pipelineStages.filter((s) => FINAL_STAGES.includes(s.id))]);
+  return stage;
+}
+
+/** Renomeia uma etapa (inclusive Ganho e Perdido) e, nas abertas, troca a cor. */
+export function updatePipelineStage(draft: AppData, id: OpportunityStage, patch: { label?: string; tone?: Tone }): void {
+  const stage = mustFind(draft.pipelineStages, id, 'Etapa');
+  if (patch.label !== undefined) {
+    const name = cleanStageLabel(patch.label);
+    if (draft.pipelineStages.some((s) => s.id !== id && s.label.toLocaleLowerCase('pt-BR') === name.toLocaleLowerCase('pt-BR'))) {
+      throw new Error(`Já existe uma etapa chamada "${name}".`);
+    }
+    stage.label = name;
+  }
+  if (patch.tone !== undefined && isOpenStage(id) && patch.tone !== 'success' && patch.tone !== 'danger') stage.tone = patch.tone;
+}
+
+/** Move uma etapa aberta uma posição para cima (-1) ou para baixo (+1). Ganho e Perdido não se movem. */
+export function movePipelineStage(draft: AppData, id: OpportunityStage, direction: -1 | 1): void {
+  if (!isOpenStage(id)) throw new Error('"Ganho" e "Perdido" ficam sempre no fim do funil.');
+  const open = draft.pipelineStages.filter((s) => isOpenStage(s.id));
+  const index = open.findIndex((s) => s.id === id);
+  if (index < 0) throw new Error('Etapa não encontrada.');
+  const target = index + direction;
+  if (target < 0 || target >= open.length) return;
+  [open[index], open[target]] = [open[target], open[index]];
+  draft.pipelineStages = fixFinalStages([...open, ...draft.pipelineStages.filter((s) => !isOpenStage(s.id))]);
+}
+
+/** Coloca as etapas abertas exatamente na ordem informada (usado ao arrastar). */
+export function reorderPipelineStages(draft: AppData, orderedIds: OpportunityStage[]): void {
+  const open = draft.pipelineStages.filter((s) => isOpenStage(s.id));
+  if (orderedIds.length !== open.length || !open.every((s) => orderedIds.includes(s.id))) {
+    throw new Error('A lista de etapas mudou. Atualize a página e tente de novo.');
+  }
+  const sorted = orderedIds.map((id) => open.find((s) => s.id === id)!);
+  draft.pipelineStages = fixFinalStages([...sorted, ...draft.pipelineStages.filter((s) => !isOpenStage(s.id))]);
+}
+
+/**
+ * Remove uma etapa aberta. As oportunidades que estão nela vão para `targetId`
+ * (com registro no histórico), então nada se perde.
+ */
+export function removePipelineStage(draft: AppData, id: OpportunityStage, targetId: OpportunityStage | null, ctx: ActionContext): number {
+  if (!isOpenStage(id)) throw new Error('"Ganho" e "Perdido" são etapas finais e não podem ser removidas.');
+  const stage = mustFind(draft.pipelineStages, id, 'Etapa');
+  const open = draft.pipelineStages.filter((s) => isOpenStage(s.id));
+  if (open.length <= 1) throw new Error('O funil precisa ter pelo menos uma etapa aberta.');
+  const affected = draft.opportunities.filter((o) => o.stage === id);
+  if (affected.length) {
+    if (!targetId || targetId === id) throw new Error('Escolha para qual etapa mover as oportunidades desta etapa.');
+    mustBeStage(draft, targetId);
+    for (const o of affected) {
+      o.stage = targetId;
+      o.history.push(historyEntry(`Etapa "${stage.label}" removida do funil. Oportunidade movida para "${stageLabel(draft, targetId)}".`, ctx));
+    }
+  }
+  draft.pipelineStages = draft.pipelineStages.filter((s) => s.id !== id);
+  return affected.length;
 }
 
 // ---------------------------------------------------------------- Clientes
@@ -249,22 +376,74 @@ export function togglePendingItem(draft: AppData, clientId: ID, itemId: ID): voi
 export type ProjectInput = Pick<
   Project,
   'name' | 'clientId' | 'ownerIds' | 'status' | 'startDate' | 'dueDate' | 'description'
-> & { links?: Partial<Project['links']> };
+> & {
+  links?: Partial<Project['links']>;
+  type?: ProjectType;
+  extra?: Partial<ProjectExtra>;
+  /** Plano mensal: mês de referência (AAAA-MM). */
+  period?: string | null;
+  serviceId?: ID | null;
+};
 
-export function createProject(draft: AppData, input: ProjectInput, ctx: ActionContext): Project {
-  mustFind(draft.clients, input.clientId, 'Cliente');
+export interface ProjectCreateOptions {
+  /** Substitui o checklist padrão do tipo (ex.: itens de um serviço do catálogo). */
+  checklist?: string[];
+  /** Itens somados ao checklist padrão (ex.: quantidade de posts e stories). */
+  extraChecklist?: string[];
+}
+
+const EMPTY_EXTRA: ProjectExtra = { artsFolder: '', social: '', amount: null, billingDay: null };
+
+function cleanExtra(extra: Partial<ProjectExtra> | undefined, base: ProjectExtra = EMPTY_EXTRA): ProjectExtra {
+  const merged = { ...base, ...extra };
+  if (merged.amount !== null && !(merged.amount >= 0)) throw new Error('O valor do plano não pode ser negativo.');
+  if (merged.billingDay !== null && !(Number.isInteger(merged.billingDay) && merged.billingDay >= 1 && merged.billingDay <= 31)) {
+    throw new Error('O dia de vencimento deve ser um número de 1 a 31.');
+  }
+  return merged;
+}
+
+/** "Plano Essencial – The House – Novembro/2026" (sem repetir o mês se já estiver no nome). */
+export function monthlyPlanName(baseName: string, clientName: string, period: string): string {
+  const base = baseName.replace(/\s*[–-]\s*[A-Za-zÀ-ú]+\/\d{4}\s*$/, '').trim();
+  const withClient = clientName && !base.toLocaleLowerCase('pt-BR').includes(clientName.toLocaleLowerCase('pt-BR')) ? `${base} – ${clientName}` : base;
+  return `${withClient} – ${monthLabel(period)}`;
+}
+
+export function createProject(draft: AppData, input: ProjectInput, ctx: ActionContext, options: ProjectCreateOptions = {}): Project {
+  const client = mustFind(draft.clients, input.clientId, 'Cliente');
+  const type: ProjectType = input.type ?? 'site';
+  const template = PROJECT_TEMPLATES[type];
+  const startDate = input.startDate || todayISO(ctx.now);
+  let name = input.name.trim();
+  if (!name) throw new Error('Informe o nome do projeto.');
+  let period: string | null = null;
+  let dueDate = input.dueDate;
+  if (type === 'plano_mensal') {
+    period = input.period || monthKey(startDate);
+    if (!/^\d{4}-\d{2}$/.test(period)) throw new Error('Mês do plano inválido.');
+    name = monthlyPlanName(name, client.company, period);
+    if (!dueDate) dueDate = lastDayOfMonth(period);
+  }
+  if (!dueDate) throw new Error('Informe o prazo do projeto.');
+  const id = createId('prj');
   const project: Project = {
-    id: createId('prj'),
-    name: input.name.trim(),
+    id,
+    name,
     clientId: input.clientId,
     ownerIds: responsibles(draft, input.ownerIds),
     status: input.status,
-    startDate: input.startDate || todayISO(ctx.now),
-    dueDate: input.dueDate,
+    startDate,
+    dueDate,
     description: input.description,
-    stages: DEFAULT_PRODUCTION_STAGES.map((name) => ({ id: createId('stg'), name, status: 'pendente' as const })),
-    checklist: checklistFrom(DEFAULT_DELIVERY_CHECKLIST),
+    stages: template.stages.map((stageName) => ({ id: createId('stg'), name: stageName, status: 'pendente' as const })),
+    checklist: checklistFrom([...(options.checklist ?? template.checklist), ...(options.extraChecklist ?? [])].map((t) => t.trim()).filter(Boolean)),
     links: { repository: '', production: '', staging: '', ...input.links },
+    type,
+    extra: cleanExtra(input.extra),
+    period,
+    seriesId: type === 'plano_mensal' ? id : null,
+    serviceId: input.serviceId ?? null,
     createdAt: ctx.now.toISOString(),
   };
   draft.projects.push(project);
@@ -273,10 +452,71 @@ export function createProject(draft: AppData, input: ProjectInput, ctx: ActionCo
 
 export function updateProject(draft: AppData, id: ID, patch: Partial<ProjectInput>): void {
   const project = mustFind(draft.projects, id, 'Projeto');
-  const { links, ...rest } = patch;
+  const { links, extra, type, ...rest } = patch;
   Object.assign(project, rest);
+  if (rest.name !== undefined) project.name = rest.name.trim();
   if (rest.ownerIds !== undefined) project.ownerIds = responsibles(draft, rest.ownerIds);
   if (links) project.links = { ...project.links, ...links };
+  if (extra) project.extra = cleanExtra(extra, project.extra);
+  // O tipo é escolhido na criação; trocar depois mudaria etapas e checklist já em uso.
+  void type;
+}
+
+/** Exclui um projeto. Tarefas e conteúdos ficam, só perdem o vínculo; decisões do projeto são removidas. */
+export function deleteProject(draft: AppData, id: ID): void {
+  mustFind(draft.projects, id, 'Projeto');
+  draft.projects = draft.projects.filter((p) => p.id !== id);
+  for (const t of draft.tasks) if (t.related?.type === 'project' && t.related.id === id) t.related = null;
+  draft.decisions = draft.decisions.filter((d) => d.projectId !== id);
+  for (const c of draft.contents) if (c.projectId === id) c.projectId = null;
+  for (const p of draft.proposals) p.projectIds = p.projectIds.filter((x) => x !== id);
+}
+
+/** Meses de um mesmo plano mensal, do mais recente para o mais antigo. */
+export function planMonths(data: AppData, project: Project): Project[] {
+  if (project.type !== 'plano_mensal') return [project];
+  const series = project.seriesId ?? project.id;
+  return data.projects
+    .filter((p) => p.type === 'plano_mensal' && (p.seriesId ?? p.id) === series)
+    .sort((a, b) => (b.period ?? '').localeCompare(a.period ?? ''));
+}
+
+/**
+ * Renova um plano mensal: cria o mês seguinte com as mesmas etapas e checklist
+ * (desmarcados), mesmos responsáveis, links e valores. O mês atual fica no histórico.
+ */
+export function renewMonthlyPlan(draft: AppData, id: ID, ctx: ActionContext): Project {
+  const current = mustFind(draft.projects, id, 'Projeto');
+  if (current.type !== 'plano_mensal') throw new Error('Só planos mensais podem ser renovados para o próximo mês.');
+  const series = current.seriesId ?? current.id;
+  const latest = planMonths(draft, current)[0];
+  const period = shiftMonth(latest.period ?? monthKey(latest.startDate), 1);
+  if (draft.projects.some((p) => (p.seriesId ?? p.id) === series && p.period === period)) {
+    throw new Error(`Este plano já tem o mês ${monthLabel(period)}.`);
+  }
+  const client = draft.clients.find((c) => c.id === latest.clientId);
+  const startDate = `${period}-01`;
+  const project: Project = {
+    ...structuredClone(latest),
+    id: createId('prj'),
+    name: monthlyPlanName(latest.name, client?.company ?? '', period),
+    status: 'planejamento',
+    startDate,
+    dueDate:
+      !latest.dueDate || (latest.period && latest.dueDate === lastDayOfMonth(latest.period))
+        ? lastDayOfMonth(period)
+        : addMonths(latest.dueDate, 1),
+    stages: latest.stages.map((s) => ({ id: createId('stg'), name: s.name, status: 'pendente' as const })),
+    checklist: latest.checklist.map((c) => ({ id: createId('chk'), text: c.text, done: false })),
+    period,
+    seriesId: series,
+    createdAt: ctx.now.toISOString(),
+    isDemo: undefined,
+  };
+  delete project.isDemo;
+  if (!latest.seriesId) latest.seriesId = series;
+  draft.projects.push(project);
+  return project;
 }
 
 export function setStageStatus(draft: AppData, projectId: ID, stageId: ID, status: StageStatus): void {
