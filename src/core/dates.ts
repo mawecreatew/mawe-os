@@ -73,3 +73,66 @@ const dateTimeFormatter = new Intl.DateTimeFormat('pt-BR', {
 export function formatTimestamp(value: string): string {
   return dateTimeFormatter.format(new Date(value)).replace('.', '');
 }
+
+// ---------------------------------------------------------------- Meses
+
+/** Mês no formato AAAA-MM. */
+export type MonthKey = string;
+
+export function monthKey(value: ISODate): MonthKey {
+  return value.slice(0, 7);
+}
+
+export function daysInMonth(year: number, month1to12: number): number {
+  return new Date(year, month1to12, 0).getDate();
+}
+
+/** Soma meses mantendo o dia (ajusta para o último dia quando o mês é mais curto). */
+export function addMonths(value: ISODate, months: number, day?: number): ISODate {
+  const [y, m, d] = value.slice(0, 10).split('-').map(Number);
+  const total = y * 12 + (m - 1) + months;
+  const year = Math.floor(total / 12);
+  const month = (total % 12) + 1;
+  const wanted = day ?? d;
+  return `${year}-${pad(month)}-${pad(Math.min(wanted, daysInMonth(year, month)))}`;
+}
+
+export function shiftMonth(key: MonthKey, months: number): MonthKey {
+  return monthKey(addMonths(`${key}-01`, months));
+}
+
+export function firstDayOfMonth(key: MonthKey): ISODate {
+  return `${key}-01`;
+}
+
+export function lastDayOfMonth(key: MonthKey): ISODate {
+  const [y, m] = key.split('-').map(Number);
+  return `${key}-${pad(daysInMonth(y, m))}`;
+}
+
+const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+/** "Novembro/2026". */
+export function monthLabel(key: MonthKey): string {
+  const [y, m] = key.split('-').map(Number);
+  return `${MONTH_NAMES[m - 1]}/${y}`;
+}
+
+/** "novembro de 2026". */
+export function monthLabelLong(key: MonthKey): string {
+  const [y, m] = key.split('-').map(Number);
+  return `${MONTH_NAMES[m - 1].toLowerCase()} de ${y}`;
+}
+
+export function isValidISODate(value: string | null | undefined): value is ISODate {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [y, m, d] = value.split('-').map(Number);
+  return m >= 1 && m <= 12 && d >= 1 && d <= daysInMonth(y, m);
+}
+
+/** Segunda-feira da semana de uma data (semana começando na segunda). */
+export function startOfWeek(value: ISODate): ISODate {
+  const date = parseISODate(value);
+  const weekday = (date.getDay() + 6) % 7; // 0 = segunda
+  return addDays(value, -weekday);
+}

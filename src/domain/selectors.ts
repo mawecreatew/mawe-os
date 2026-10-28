@@ -3,7 +3,7 @@
  * As telas usam estas funções; os testes também.
  */
 import { diffInDays, type ISODate } from '../core/dates.ts';
-import { OPEN_STAGES } from './labels.ts';
+import { LOST_STAGE, WON_STAGE, isOpenStage, pipelineStages } from './labels.ts';
 import { peopleNames } from './people.ts';
 import type {
   AppData,
@@ -165,7 +165,7 @@ export function upcomingDeadlines(
     }
   }
   for (const o of data.opportunities) {
-    if (OPEN_STAGES.includes(o.stage) && inWindow(o.followUpDate)) {
+    if (isOpenStage(o.stage) && inWindow(o.followUpDate)) {
       items.push({
         kind: 'followup',
         id: o.id,
@@ -210,7 +210,8 @@ export interface PipelineSummary {
 }
 
 export function pipelineSummary(data: AppData, today: ISODate): PipelineSummary {
-  const byStage = {} as Record<OpportunityStage, number>;
+  const byStage: Record<OpportunityStage, number> = {};
+  for (const stage of pipelineStages(data)) byStage[stage.id] = 0;
   const summary: PipelineSummary = {
     openCount: 0,
     openValue: 0,
@@ -223,10 +224,10 @@ export function pipelineSummary(data: AppData, today: ISODate): PipelineSummary 
   };
   for (const o of data.opportunities) {
     byStage[o.stage] = (byStage[o.stage] ?? 0) + 1;
-    if (o.stage === 'ganho') {
+    if (o.stage === WON_STAGE) {
       summary.wonCount++;
       summary.wonValue += o.estimatedValue ?? 0;
-    } else if (o.stage === 'perdido') {
+    } else if (o.stage === LOST_STAGE) {
       summary.lostCount++;
     } else {
       summary.openCount++;

@@ -90,7 +90,20 @@ try {
   });
 
   await step('navega por todas as áreas pelo menu lateral', async () => {
-    const sections = { Comercial: 'Comercial', Clientes: 'Clientes', Projetos: 'Projetos', Tarefas: 'Tarefas', Biblioteca: 'Biblioteca', 'Central de agentes': 'Central de agentes', Sistema: 'Sistema', Painel: null };
+    const sections = {
+      Comercial: 'Comercial',
+      Clientes: 'Clientes',
+      Projetos: 'Projetos',
+      Calendário: 'Calendário de conteúdo',
+      Tarefas: 'Tarefas',
+      Financeiro: 'Financeiro',
+      'Tráfego pago': 'Tráfego pago',
+      'Serviços e preços': 'Serviços e preços',
+      Biblioteca: 'Biblioteca',
+      'Central de agentes': 'Central de agentes',
+      Sistema: 'Sistema',
+      Painel: null,
+    };
     for (const [label, title] of Object.entries(sections)) {
       await page.locator('.sidebar .nav__item', { hasText: label }).first().click();
       await page.waitForTimeout(50);
@@ -200,6 +213,7 @@ try {
 
   await step('cria projeto a partir do cliente com etapas padrão', async () => {
     await page.getByRole('button', { name: 'Novo projeto' }).click();
+    await page.locator('dialog.modal .type-chooser__item', { hasText: 'Site' }).first().click();
     await page.locator('dialog.modal input[name=name]').fill('Site Teste E2E');
     await page.locator('dialog.modal input[name=dueDate]').fill('2030-01-15');
     await page.locator('dialog.modal input[name=repository]').fill('github.com/exemplo/site-teste');
@@ -222,6 +236,209 @@ try {
     await page.locator('dialog.modal input[name=title]').fill('Usar paleta neutra');
     await submitModal();
     await page.locator('.decision', { hasText: 'Usar paleta neutra' }).waitFor();
+  });
+
+
+  // ------------------------------------------------------------ Novas áreas
+
+  const modal = () => page.locator('dialog.modal');
+
+  await step('funil: adiciona, renomeia, reordena e remove etapa sem perder oportunidades', async () => {
+    await go('#/comercial');
+    await page.getByRole('tab', { name: 'Funil' }).click();
+    const columnsBefore = await page.locator('.board__column').count();
+    assert.ok(columnsBefore > 0);
+    await page.getByRole('button', { name: 'Etapas do funil' }).click();
+    await modal().locator('#stage-new').fill('Reunião marcada');
+    await modal().locator('#stage-new').press('Enter');
+    await modal().locator('.stage-editor__row input[value="Reunião marcada"]').waitFor();
+    // Nova etapa entra antes de "Ganho".
+    const labels = await modal().locator('.stage-editor__row input').evaluateAll((els) => els.map((e) => e.value));
+    assert.deepEqual(labels.slice(-3), ['Reunião marcada', 'Ganho', 'Perdido']);
+    // Renomeia
+    const input = modal().locator('.stage-editor__row input[value="Reunião marcada"]');
+    await input.fill('Reunião agendada');
+    await input.press('Tab');
+    await page.locator('.toast', { hasText: 'Etapa renomeada' }).waitFor();
+    // Sobe uma posição
+    await modal().getByRole('button', { name: 'Subir Reunião agendada' }).click();
+    await modal().locator('.stage-editor__row').nth(labels.length - 4).locator('input[value="Reunião agendada"]').waitFor();
+    await modal().getByRole('button', { name: 'Concluir' }).click();
+    assert.equal(await page.locator('.board__column').count(), columnsBefore + 1);
+    // Remove uma etapa com oportunidades: pede destino e move.
+    await page.getByRole('button', { name: 'Etapas do funil' }).click();
+    const negotiationCount = Number(await modal().locator('.stage-editor__row', { has: page.locator('input[value="Negociação"]') }).locator('.stage-editor__count').innerText());
+    assert.ok(negotiationCount > 0);
+    await modal().getByRole('button', { name: 'Remover Negociação' }).click();
+    await modal().locator('select[name=target]').selectOption({ label: 'Reunião agendada' });
+    await modal().getByRole('button', { name: 'Mover e remover etapa' }).click();
+    await page.locator('.toast', { hasText: 'Etapa removida' }).waitFor();
+    await modal().getByRole('button', { name: 'Concluir' }).click();
+    const column = page.locator('.board__column', { has: page.locator('.board__title', { hasText: 'Reunião agendada' }) });
+    assert.equal(await column.locator('.opp-card').count(), negotiationCount);
+    assert.equal(await page.locator('.board__title', { hasText: 'Negociação' }).count(), 0);
+  });
+
+  await step('prospecção: marca contato feito e resposta', async () => {
+    await page.locator('.opp-card__link').first().click();
+    await page.waitForURL(/#\/comercial\/opp_/);
+    await page.locator('.panel', { hasText: 'Prospecção' }).waitFor();
+    const contacted = page.getByRole('button', { name: 'Marcar contato feito hoje' });
+    if (await contacted.count()) await contacted.click();
+    await page.locator('.milestone.is-done', { hasText: 'Contato feito' }).waitFor();
+    await page.getByRole('button', { name: 'Marcar que respondeu hoje' }).click();
+    await page.locator('.milestone.is-done', { hasText: 'Respondeu' }).waitFor();
+  });
+
+  await step('serviços: cadastra, aparece no catálogo e desativa', async () => {
+    await go('#/servicos');
+    assert.ok((await page.locator('.service-card').count()) >= 9, 'catálogo inicial deveria existir');
+    await page.getByRole('button', { name: 'Novo serviço' }).click();
+    await modal().locator('input[name=name]').fill('Pacote de feed E2E');
+    await modal().locator('select[name=category]').selectOption('conteudo');
+    await modal().locator('input[name=price]').fill('350');
+    await modal().locator('textarea[name=includes]').fill('8 posts no feed\n4 stories');
+    await submitModal();
+    const card = page.locator('.service-card', { hasText: 'Pacote de feed E2E' });
+    await card.waitFor();
+    await card.getByRole('button', { name: 'Desativar' }).click();
+    await page.locator('.service-card', { hasText: 'Pacote de feed E2E' }).waitFor({ state: 'detached' });
+    await page.getByRole('tab', { name: /Todos/ }).click();
+    await page.locator('.service-card.is-inactive', { hasText: 'Pacote de feed E2E' }).getByRole('button', { name: 'Ativar' }).click();
+  });
+
+  await step('proposta: soma serviços, envia, aceita e cria projetos e parcelas', async () => {
+    await go('#/comercial/propostas');
+    await expectTitle('Comercial');
+    await page.getByRole('button', { name: 'Nova proposta' }).first().click();
+    await modal().locator('select[name=to]').selectOption({ label: 'Studio Equilíbrio Pilates' });
+    await modal().locator('input[name=svc][value=svc_landing]').check();
+    await modal().locator('input[name=svc][value=svc_essencial]').check();
+    await modal().locator('[data-proposal-total]', { hasText: 'R$ 600,00 + R$ 49,00/mês' }).waitFor();
+    await modal().locator('input[name="price:svc_landing"]').fill('650');
+    await modal().locator('[data-proposal-total]', { hasText: 'R$ 650,00 + R$ 49,00/mês' }).waitFor();
+    await modal().locator('input[name=contractLink]').fill('drive.google.com/contrato-teste');
+    await submitModal();
+    await page.waitForURL(/#\/comercial\/propostas\/ppl_/);
+    await page.getByRole('tab', { name: 'Enviada' }).click();
+    await page.locator('.page-header .badge', { hasText: 'Enviada' }).waitFor();
+    await page.getByRole('tab', { name: 'Aceita' }).click();
+    await modal().getByRole('button', { name: 'Confirmar' }).click();
+    await page.locator('.toast', { hasText: '2 projetos criados' }).waitFor();
+    await page.locator('.panel', { hasText: 'Projetos criados' }).locator('a', { hasText: 'Plano Essencial' }).waitFor();
+    await go('#/financeiro');
+    await page.locator('.movement:not(.is-paid)', { hasText: 'Studio Equilíbrio Pilates · Entrada (50%)' }).waitFor();
+  });
+
+  await step('projetos: plano mensal com renovação, filtro por tipo e exclusão com confirmação', async () => {
+    await go('#/projetos');
+    await page.getByRole('tab', { name: /Plano mensal/ }).click();
+    const plan = page.locator('.project-card', { hasText: 'Studio Equilíbrio Pilates' }).first();
+    await plan.click();
+    await page.waitForURL(/#\/projetos\/prj_/);
+    await expectTitle(/^Plano Essencial – Studio Equilíbrio Pilates – [A-ZÇ][a-zç]+\/\d{4}$/);
+    assert.equal(await page.locator('.panel', { hasText: 'Repositório GitHub' }).count(), 0, 'plano não mostra GitHub');
+    await page.locator('.panel', { hasText: 'Pasta das artes' }).waitFor();
+    await page.getByRole('button', { name: 'Renovar para o próximo mês' }).click();
+    await page.locator('.toast', { hasText: 'Plano renovado' }).waitFor();
+    assert.equal(await page.locator('.month-list__item').count(), 2);
+    // Excluir: pede confirmação; cancelar não apaga.
+    const title = await h1();
+    await page.locator('.page-header').getByRole('button', { name: 'Excluir' }).click();
+    await modal().locator('.confirm-text', { hasText: 'Tem certeza que deseja excluir este projeto?' }).waitFor();
+    await modal().getByRole('button', { name: 'Cancelar' }).click();
+    await expectTitle(title);
+    await page.locator('.page-header').getByRole('button', { name: 'Excluir' }).click();
+    await modal().getByRole('button', { name: 'Excluir projeto' }).click();
+    await page.waitForURL(/#\/projetos$/);
+    assert.equal(await page.locator('.project-card', { hasText: title }).count(), 0);
+  });
+
+  await step('projetos: pacote de conteúdo com quantidades no checklist', async () => {
+    await go('#/projetos');
+    await page.getByRole('button', { name: 'Novo projeto' }).click();
+    await modal().locator('.type-chooser__item', { hasText: 'Pacote de conteúdo' }).click();
+    await modal().locator('input[name=name]').fill('Pacote E2E');
+    await modal().locator('input[name=dueDate]').fill('2030-02-01');
+    await modal().locator('input[name=posts]').fill('6');
+    await modal().locator('input[name=stories]').fill('10');
+    await submitModal();
+    await page.waitForURL(/#\/projetos\/prj_/);
+    await page.locator('.checklist__item', { hasText: '6 posts no feed' }).waitFor();
+    await page.locator('.checklist__item', { hasText: '10 stories' }).waitFor();
+    await page.locator('.stage__name', { hasText: 'Criação das artes' }).waitFor();
+  });
+
+  await step('calendário: cria conteúdo ligado ao projeto e muda status na semana', async () => {
+    await page.locator('.panel', { hasText: 'Conteúdos no calendário' }).getByRole('button', { name: 'Novo conteúdo' }).click();
+    await modal().locator('input[name=title]').fill('Post de teste E2E');
+    await modal().locator('input[name=date]').fill(await page.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }));
+    await submitModal();
+    await page.locator('.content-mini', { hasText: 'Post de teste E2E' }).waitFor();
+    await go('#/calendario');
+    await page.locator('.cal-item', { hasText: 'Post de teste E2E' }).waitFor();
+    await page.getByRole('tab', { name: 'Semana' }).click();
+    const card = page.locator('.cal-card', { hasText: 'Post de teste E2E' });
+    await card.locator('select').selectOption('postado');
+    await page.locator('.toast', { hasText: 'Postado' }).waitFor();
+    await page.getByRole('tab', { name: 'Cor por status' }).click();
+    await page.locator('.cal-card.tone--success', { hasText: 'Post de teste E2E' }).waitFor();
+    await page.getByRole('tab', { name: 'Mês' }).click();
+  });
+
+  await step('financeiro: despesa do bolso de um sócio, recorrente gerada sozinha e resumo', async () => {
+    await go('#/financeiro');
+    await page.getByRole('button', { name: 'Nova despesa' }).click();
+    await modal().locator('input[name=description]').fill('Hospedagem E2E');
+    await modal().locator('input[name=amount]').fill('19,90');
+    await modal().locator('select[name=category]').selectOption('Hospedagem');
+    await modal().locator('select[name=situation]').selectOption('pago');
+    await modal().locator('select[name=paidBy]').selectOption('maria');
+    await submitModal();
+    await page.locator('.movement', { hasText: 'Hospedagem E2E' }).locator('.badge', { hasText: 'Do bolso: Maria' }).waitFor();
+    await page.locator('.notice', { hasText: 'Pago do bolso dos sócios' }).waitFor();
+    // Recorrente: cadastra uma vez, vencimento aparece sozinho no mês.
+    await page.getByRole('button', { name: 'Despesa recorrente' }).click();
+    await modal().locator('input[name=description]').fill('Assinatura E2E');
+    await modal().locator('input[name=amount]').fill('50');
+    await submitModal();
+    const rec = page.locator('.movement', { hasText: 'Assinatura E2E' });
+    await rec.waitFor();
+    await rec.locator('input[type=checkbox]').check();
+    await page.locator('.movement.is-paid', { hasText: 'Assinatura E2E' }).waitFor();
+    // Próximo mês também tem a ocorrência, sem cadastrar de novo.
+    await page.getByRole('button', { name: 'Próximo mês' }).click();
+    await page.locator('.movement:not(.is-paid)', { hasText: 'Assinatura E2E' }).waitFor();
+    await page.getByRole('button', { name: 'Mês atual' }).click();
+    await page.getByRole('tab', { name: /Despesas recorrentes/ }).click();
+    await page.locator('tr', { hasText: 'Assinatura E2E' }).waitFor();
+    await page.getByRole('tab', { name: 'Entradas e saídas' }).click();
+  });
+
+  await step('tráfego pago: campanha com custo por resultado calculado', async () => {
+    await go('#/trafego');
+    await page.getByRole('button', { name: 'Nova campanha' }).click();
+    await modal().locator('input[name=name]').fill('Campanha E2E');
+    await modal().locator('input[name=budget]').fill('100');
+    await modal().locator('input[name=spent]').fill('40');
+    await modal().locator('input[name=results]').fill('8');
+    await modal().locator('textarea[name=learnings]').fill('Vídeo foi melhor que imagem');
+    await submitModal();
+    const card = page.locator('.campaign', { hasText: 'Campanha E2E' });
+    await card.locator('.metric', { hasText: 'Custo por resultado' }).locator('strong', { hasText: 'R$ 5,00' }).waitFor();
+    await page.locator('.learning-list', { hasText: 'Vídeo foi melhor que imagem' }).waitFor();
+  });
+
+  await step('painel: metas do mês com progresso e contas a pagar', async () => {
+    await go('#/painel');
+    await page.getByRole('button', { name: 'Definir metas' }).click();
+    await modal().locator('input[name=revenue]').fill('5000');
+    await modal().locator('input[name=contacts]').fill('40');
+    await submitModal();
+    const goals = page.locator('.goals-panel');
+    await goals.locator('.goal', { hasText: 'Faturamento do mês' }).locator('small', { hasText: 'de R$ 5.000' }).waitFor();
+    await goals.locator('.goal__sources', { hasText: 'Google Maps' }).waitFor();
+    await page.locator('.panel', { hasText: 'Contas a pagar e a receber' }).waitFor();
   });
 
   await step('biblioteca: abre modelo, alterna categorias e mostra decisões', async () => {
@@ -268,7 +485,7 @@ try {
     await go('#/sistema');
     await page.getByRole('button', { name: 'Começar com base vazia' }).click();
     await page.locator('dialog.modal').getByRole('button', { name: 'Apagar e começar' }).click();
-    for (const hash of ['#/painel', '#/comercial', '#/clientes', '#/projetos', '#/tarefas', '#/biblioteca']) {
+    for (const hash of ['#/painel', '#/comercial', '#/comercial/propostas', '#/clientes', '#/projetos', '#/calendario', '#/tarefas', '#/financeiro', '#/trafego', '#/biblioteca']) {
       await go(hash);
       assert.ok((await page.locator('.empty-state').count()) > 0, `sem estado vazio em ${hash}`);
     }
@@ -301,6 +518,11 @@ try {
     assert.equal(await page.locator('body').evaluate((b) => b.classList.contains('nav-open')), false);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     assert.ok(overflow <= 0, `rolagem horizontal indesejada: ${overflow}px`);
+    for (const hash of ['#/calendario', '#/financeiro', '#/trafego', '#/servicos', '#/comercial/propostas', '#/painel']) {
+      await go(hash);
+      const extra = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      assert.ok(extra <= 0, `rolagem horizontal indesejada em ${hash}: ${extra}px`);
+    }
   });
 
   console.log('\nCom login (Supabase simulado)\n');

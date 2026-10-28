@@ -5,9 +5,14 @@ import { formatCurrency, parseMoney, pluralize } from '../core/format.ts';
 import { cx, html, multiline, type SafeHtml } from '../core/html.ts';
 import { navigate, type Route } from '../core/router.ts';
 import { opportunityBriefing } from '../agents/context.ts';
-import { LEAD_SOURCES, OPEN_STAGES, OPPORTUNITY_STAGES, labelOf, toneOf } from '../domain/labels.ts';
+import { LEAD_SOURCES, STAGE_TONES, WON_STAGE, isOpenStage, openStages, pipelineStages, stageLabel, stageOptions, stageTone } from '../domain/labels.ts';
 import {
   addOpportunityNote,
+  addPipelineStage,
+  movePipelineStage,
+  removePipelineStage,
+  setOpportunityMilestone,
+  updatePipelineStage,
   convertOpportunityToClient,
   createOpportunity,
   deleteOpportunity,
@@ -16,7 +21,7 @@ import {
   type OpportunityInput,
 } from '../domain/operations.ts';
 import { findOpportunity, findUser, opportunitiesByStage, pipelineSummary, tasksRelatedTo } from '../domain/selectors.ts';
-import type { Opportunity, OpportunityStage } from '../domain/types.ts';
+import type { Opportunity, OpportunityStage, Tone } from '../domain/types.ts';
 import { allowed, requirePermission, rerender, store, today } from '../app/context.ts';
 import type { View } from '../app/view.ts';
 import { avatar, badge, button, demoTag, dueDate, emptyState, pageHeader, panel, people, avatarStack, segmented, statCard } from '../ui/components.ts';
@@ -26,6 +31,8 @@ import { icon } from '../ui/icons.ts';
 import { closeModal, confirmAction, openModal, toast } from '../ui/overlay.ts';
 import { taskList, taskRow } from '../ui/task-row.ts';
 import { setAgentDraft } from './agents.ts';
+import { commercialTabs, openProposalForm, proposalsOfOpportunity, renderProposalDetail, renderProposals } from './proposals.ts';
+import { findProposal } from './proposals.ts';
 
 const ui = { mode: 'funil' as 'funil' | 'lista', owner: 'todos' };
 
@@ -39,7 +46,7 @@ function openOpportunityForm(opp?: Opportunity, stage?: OpportunityStage): void 
   const { data, currentUser } = store();
   const financeEdit = allowed('finance:edit');
   const v: OpportunityInput = opp ?? {
-    contactName: '', company: '', segment: '', source: 'Instagram', contact: {}, stage: stage ?? 'identificada',
+    contactName: '', company: '', segment: '', source: 'Instagram', contact: {}, stage: stage ?? openStages(data)[0],
     estimatedValue: null, nextAction: '', followUpDate: null, ownerIds: [currentUser.id], notes: '',
   };
   openModal({
@@ -56,7 +63,7 @@ function openOpportunityForm(opp?: Opportunity, stage?: OpportunityStage): void 
           ${textField({ name: 'email', label: 'E-mail', type: 'email', value: v.contact.email })}
           ${textField({ name: 'phone', label: 'Telefone / WhatsApp', type: 'tel', value: v.contact.phone })}
           ${textField({ name: 'instagram', label: 'Instagram', value: v.contact.instagram, placeholder: '@perfil' })}
-          ${selectField({ name: 'stage', label: 'Etapa', value: v.stage, options: OPPORTUNITY_STAGES })}
+          ${selectField({ name: 'stage', label: 'Etapa', value: v.stage, options: stageOptions(data) })}
           ${financeEdit
             ? textField({ name: 'estimatedValue', label: 'Valor estimado (R$)', value: v.estimatedValue ?? '', inputmode: 'decimal', placeholder: 'Deixe vazio se ainda não souber' })
             : html`<div></div>`}
@@ -120,8 +127,62 @@ registerActions({
     requirePermission('commercial:edit');
     const stage = (el as HTMLSelectElement).value as OpportunityStage;
     await store().apply((draft, ctx) => moveOpportunity(draft, el.dataset.id!, stage, ctx));
-    toast(`Movida para "${labelOf(OPPORTUNITY_STAGES, stage)}".`);
+    toast(`Movida para "${stageLabel(store().data, stage)}".`);
   },
+  'opportunity:milestone': async (el) => {
+    requirePermission('commercial:edit');
+    const field = el.dataset.field as 'contactedAt' | 'repliedAt';
+    const date = el.dataset.clear ? null : today();
+    await store().apply((draft, ctx) => setOpportunityMilestone(draft, el.dataset.id!, field, date, ctx));
+    if (date) toast(field === 'contactedAt' ? 'Contato registrado.' : 'Resposta registrada.');
+  },
+  'opportunity:proposal': (el) => openProposalForm(undefined, { opportunityId: el.dataset.id }),
+  'commercial:stages': () => openStagesModal(),
+  'stage:up': async (el) => {
+    requirePermission('commercial:edit');
+    await store().apply((draft) => movePipelineStage(draft, el.dataset.id!, -1));
+    openStagesModal();
+  },
+  'stage:down': async (el) => {
+    requirePermission('commercial:edit');
+    await store().apply((draft) => movePipelineStage(draft, el.dataset.id!, 1));
+    openStagesModal();
+  },
+  'stage:rename': async (el) => {
+    requirePermission('commercial:edit');
+    const input = el as HTMLInputElement;
+    const stage = pipelineStages(store().data).find((s) => s.id === input.dataset.id);
+    if (!stage || stage.label === input.value.trim()) return;
+    try {
+      await store().apply((draft) => updatePipelineStage(draft, input.dataset.id!, { label: input.value }));
+      toast('Etapa renomeada.');
+      // Redesenha a janela (botões usam o nome novo) sem tirar o cursor de onde a pessoa está.
+      const focused = (document.activeElement as HTMLElement | null)?.id;
+      openStagesModal();
+      if (focused) document.getElementById(focused)?.focus();
+    } catch (error) {
+      input.value = stage.label;
+      throw error;
+    }
+  },
+  'stage:tone': async (el) => {
+    requirePermission('commercial:edit');
+    const tone = (el as HTMLSelectElement).value as Tone;
+    await store().apply((draft) => updatePipelineStage(draft, el.dataset.id!, { tone }));
+    openStagesModal();
+  },
+  'stage:remove': async (el) => {
+    requirePermission('commercial:edit');
+    const id = el.dataset.id!;
+    const count = store().data.opportunities.filter((o) => o.stage === id).length;
+    if (count) return openRemoveStage(id);
+    const ok = await confirmAction({ title: 'Remover etapa', text: `A etapa "${stageLabel(store().data, id)}" está vazia e será removida do funil.`, confirmLabel: 'Remover etapa' });
+    if (!ok) return openStagesModal();
+    await store().apply((draft, ctx) => removePipelineStage(draft, id, null, ctx));
+    toast('Etapa removida.');
+    openStagesModal();
+  },
+  'stage:back': () => openStagesModal(),
   'opportunity:convert': async (el) => {
     requirePermission('commercial:edit');
     const client = await store().apply((draft, ctx) => convertOpportunityToClient(draft, el.dataset.id!, ctx));
@@ -181,7 +242,7 @@ if (typeof document !== 'undefined') {
     const stage = column.dataset.dropStage as OpportunityStage;
     if (findOpportunity(store().data, id)?.stage === stage || !allowed('commercial:edit')) return;
     void store().apply((draft, ctx) => moveOpportunity(draft, id, stage, ctx)).then(() =>
-      toast(`Movida para "${labelOf(OPPORTUNITY_STAGES, stage)}".`),
+      toast(`Movida para "${stageLabel(store().data, stage)}".`),
     );
   });
 }
@@ -192,7 +253,7 @@ function opportunityCard(opp: Opportunity): SafeHtml {
   const { data } = store();
   const t = today();
   const finance = allowed('finance:view');
-  const open = OPEN_STAGES.includes(opp.stage);
+  const open = isOpenStage(opp.stage);
   return html`
     <article class="opp-card" draggable="true" data-drag-opportunity="${opp.id}">
       <a class="opp-card__link" href="#/comercial/${opp.id}">
@@ -213,11 +274,11 @@ function renderBoard(list: Opportunity[]): SafeHtml {
   const finance = allowed('finance:view');
   return html`
     <div class="board" data-preserve-scroll="commercial-board">
-      ${OPPORTUNITY_STAGES.map((stage) => {
-        const items = opportunitiesByStage({ ...store().data, opportunities: list }, stage.value);
+      ${pipelineStages(store().data).map((stage) => {
+        const items = opportunitiesByStage({ ...store().data, opportunities: list }, stage.id);
         const total = items.reduce((sum, o) => sum + (o.estimatedValue ?? 0), 0);
         return html`
-          <section class="${cx('board__column', `board__column--${stage.tone}`)}" data-drop-stage="${stage.value}" aria-label="${stage.label}">
+          <section class="${cx('board__column', `board__column--${stage.tone}`)}" data-drop-stage="${stage.id}" aria-label="${stage.label}">
             <header class="board__header">
               <span class="board__title">${stage.label}</span>
               <span class="board__count">${items.length}</span>
@@ -226,8 +287,8 @@ function renderBoard(list: Opportunity[]): SafeHtml {
             <div class="board__cards">
               ${items.length ? items.map(opportunityCard) : html`<p class="board__empty">Arraste uma oportunidade para cá</p>`}
             </div>
-            ${OPEN_STAGES.includes(stage.value)
-              ? html`<button type="button" class="board__add" data-action="opportunity:new" data-stage="${stage.value}">${icon('plus', 14)} Adicionar</button>`
+            ${isOpenStage(stage.id)
+              ? html`<button type="button" class="board__add" data-action="opportunity:new" data-stage="${stage.id}">${icon('plus', 14)} Adicionar</button>`
               : ''}
           </section>`;
       })}
@@ -239,7 +300,8 @@ function renderList(list: Opportunity[]): SafeHtml {
   const { data } = store();
   const t = today();
   const finance = allowed('finance:view');
-  const sorted = [...list].sort((a, b) => OPPORTUNITY_STAGES.findIndex((s) => s.value === a.stage) - OPPORTUNITY_STAGES.findIndex((s) => s.value === b.stage));
+  const order = pipelineStages(data).map((s) => s.id);
+  const sorted = [...list].sort((a, b) => order.indexOf(a.stage) - order.indexOf(b.stage));
   return html`
     <div class="table-wrap">
       <table class="table">
@@ -248,11 +310,11 @@ function renderList(list: Opportunity[]): SafeHtml {
           ${sorted.map(
             (o) => html`<tr>
               <td class="cell-main"><a href="#/comercial/${o.id}">${o.company}</a> ${demoTag(o)}<span class="cell-sub">${o.contactName} · ${o.segment}</span></td>
-              <td data-label="Etapa">${badge(labelOf(OPPORTUNITY_STAGES, o.stage), toneOf(OPPORTUNITY_STAGES, o.stage))}</td>
+              <td data-label="Etapa">${badge(stageLabel(data, o.stage), stageTone(data, o.stage))}</td>
               <td data-label="Responsável">${people(data, o.ownerIds)}</td>
               ${finance ? html`<td data-label="Valor" class="num">${o.estimatedValue === null ? html`<span class="muted">—</span>` : formatCurrency(o.estimatedValue)}</td>` : ''}
               <td data-label="Próxima ação">${o.nextAction || html`<span class="muted">—</span>`}</td>
-              <td data-label="Acompanhamento">${OPEN_STAGES.includes(o.stage) ? dueDate(o.followUpDate, t) : html`<span class="muted">—</span>`}</td>
+              <td data-label="Acompanhamento">${isOpenStage(o.stage) ? dueDate(o.followUpDate, t) : html`<span class="muted">—</span>`}</td>
             </tr>`,
           )}
         </tbody>
@@ -272,8 +334,9 @@ function renderOverview(): SafeHtml {
     ${pageHeader({
       title: 'Comercial',
       subtitle: `${pluralize(summary.openCount, 'oportunidade aberta', 'oportunidades abertas')} · ${pluralize(summary.followUpsDue, 'retorno pendente', 'retornos pendentes')}`,
-      actions: button({ label: 'Nova oportunidade', action: 'opportunity:new', variant: 'primary', icon: 'plus' }),
+      actions: html`${button({ label: 'Etapas do funil', action: 'commercial:stages', icon: 'settings' })}${button({ label: 'Nova oportunidade', action: 'opportunity:new', variant: 'primary', icon: 'plus' })}`,
     })}
+    ${commercialTabs('oportunidades')}
 
     <div class="stats stats--compact">
       ${statCard({ label: 'Em aberto', value: String(summary.openCount) })}
@@ -311,13 +374,14 @@ function renderDetail(opp: Opportunity): SafeHtml {
   const t = today();
   const finance = allowed('finance:view');
   const tasks = tasksRelatedTo(data, { type: 'opportunity', id: opp.id });
-  const open = OPEN_STAGES.includes(opp.stage);
+  const open = isOpenStage(opp.stage);
+  const proposals = proposalsOfOpportunity(data, opp);
 
   return html`
     ${pageHeader({
       title: opp.company,
       back: { href: '#/comercial', label: 'Comercial' },
-      subtitle: html`${badge(labelOf(OPPORTUNITY_STAGES, opp.stage), toneOf(OPPORTUNITY_STAGES, opp.stage))} ${demoTag(opp)} <span class="muted">${opp.segment}</span>`,
+      subtitle: html`${badge(stageLabel(data, opp.stage), stageTone(data, opp.stage))} ${demoTag(opp)} <span class="muted">${opp.segment}</span>`,
       actions: html`
         ${button({ label: 'Preparar para o agente comercial', action: 'opportunity:to-agent', icon: 'agents', data: { id: opp.id } })}
         ${button({ label: 'Editar', action: 'opportunity:edit', icon: 'edit', data: { id: opp.id } })}
@@ -379,7 +443,7 @@ function renderDetail(opp: Opportunity): SafeHtml {
             <div class="field">
               <label class="field__label" for="opp-stage">Etapa do funil</label>
               <select id="opp-stage" class="input select" data-change="opportunity:stage" data-id="${opp.id}">
-                ${OPPORTUNITY_STAGES.map((s) => html`<option value="${s.value}" ${s.value === opp.stage ? 'selected' : ''}>${s.label}</option>`)}
+                ${pipelineStages(data).map((s) => html`<option value="${s.id}" ${s.id === opp.stage ? 'selected' : ''}>${s.label}</option>`)}
               </select>
             </div>
             ${open
@@ -391,10 +455,30 @@ function renderDetail(opp: Opportunity): SafeHtml {
               : ''}
             ${opp.clientId
               ? html`<a class="btn btn--secondary btn--block" href="#/clientes/${opp.clientId}">${icon('clients', 16)} Ver cliente</a>`
-              : opp.stage === 'ganho' || opp.stage === 'negociacao'
-                ? button({ label: opp.stage === 'ganho' ? 'Converter em cliente' : 'Marcar como ganha e criar cliente', action: 'opportunity:convert', icon: 'check', data: { id: opp.id }, variant: opp.stage === 'ganho' ? 'primary' : 'secondary' })
+              : opp.stage === WON_STAGE || open
+                ? button({ label: opp.stage === WON_STAGE ? 'Converter em cliente' : 'Marcar como ganha e criar cliente', action: 'opportunity:convert', icon: 'check', data: { id: opp.id }, variant: opp.stage === WON_STAGE ? 'primary' : 'secondary' })
                 : ''}
           `,
+        })}
+        ${panel({
+          title: 'Prospecção',
+          icon: 'send',
+          body: html`
+            <p class="muted small">Conta nas metas do Painel (contatos feitos e respostas por origem).</p>
+            <div class="milestones">
+              ${milestone(opp, 'contactedAt', 'Contato feito', 'Marcar contato feito hoje')}
+              ${milestone(opp, 'repliedAt', 'Respondeu', 'Marcar que respondeu hoje')}
+            </div>
+          `,
+        })}
+        ${panel({
+          title: 'Propostas',
+          icon: 'file',
+          count: proposals.length,
+          action: button({ label: 'Nova proposta', action: 'opportunity:proposal', variant: 'ghost', icon: 'plus', size: 'sm', data: { id: opp.id } }),
+          body: proposals.length
+            ? html`<ul class="link-list">${proposals.map((p) => html`<li><a href="#/comercial/propostas/${p.id}">${p.title}</a></li>`)}</ul>`
+            : emptyState({ icon: 'file', compact: true, title: 'Nenhuma proposta ainda' }),
         })}
         <div class="danger-zone">
           ${button({ label: 'Excluir oportunidade', action: 'opportunity:delete', variant: 'ghost', icon: 'trash', size: 'sm', data: { id: opp.id } })}
@@ -404,9 +488,109 @@ function renderDetail(opp: Opportunity): SafeHtml {
   `;
 }
 
+function milestone(opp: Opportunity, field: 'contactedAt' | 'repliedAt', label: string, actionLabel: string): SafeHtml {
+  const date = opp[field];
+  return date
+    ? html`<div class="milestone is-done">
+        <span>${icon('check', 15)} ${label} · ${formatShortDate(date)}</span>
+        ${button({ label: 'Desfazer', action: 'opportunity:milestone', variant: 'ghost', size: 'sm', data: { id: opp.id, field, clear: '1' } })}
+      </div>`
+    : html`<div class="milestone">${button({ label: actionLabel, action: 'opportunity:milestone', icon: 'check', size: 'sm', data: { id: opp.id, field } })}</div>`;
+}
+
+// ---------------------------------------------------------------- Configurar etapas do funil
+
+function openStagesModal(): void {
+  const { data } = store();
+  const stages = pipelineStages(data);
+  const open = stages.filter((s) => isOpenStage(s.id));
+  const counts = (id: string) => data.opportunities.filter((o) => o.stage === id).length;
+  openModal({
+    title: 'Etapas do funil',
+    description: 'As mudanças valem para os dois sócios. "Ganho" e "Perdido" ficam sempre no fim e contam nos resumos.',
+    size: 'lg',
+    body: html`
+      <ol class="stage-editor">
+        ${stages.map((s) => {
+          const final = !isOpenStage(s.id);
+          const index = open.findIndex((x) => x.id === s.id);
+          return html`<li class="${cx('stage-editor__row', final && 'is-final')}">
+            <span class="${cx('stage-editor__dot', `tone--${s.tone}`)}" aria-hidden="true"></span>
+            <label class="visually-hidden" for="stage-${s.id}">Nome da etapa</label>
+            <input id="stage-${s.id}" class="input" value="${s.label}" data-change="stage:rename" data-id="${s.id}" maxlength="40" />
+            ${final
+              ? html`<span class="stage-editor__fixed">${icon('lock', 13)} Final</span>`
+              : html`<select class="input select stage-editor__tone" aria-label="Cor da etapa ${s.label}" data-change="stage:tone" data-id="${s.id}">
+                  ${STAGE_TONES.map((t) => html`<option value="${t.value}" ${t.value === s.tone ? 'selected' : ''}>${t.label}</option>`)}
+                </select>`}
+            <span class="stage-editor__count" title="Oportunidades nesta etapa">${counts(s.id)}</span>
+            <span class="stage-editor__actions">
+              ${final
+                ? ''
+                : html`${button({ label: `Subir ${s.label}`, iconOnly: true, icon: 'arrowUp', variant: 'ghost', size: 'sm', action: 'stage:up', data: { id: s.id } })}
+                  ${button({ label: `Descer ${s.label}`, iconOnly: true, icon: 'arrowDown', variant: 'ghost', size: 'sm', action: 'stage:down', data: { id: s.id } })}
+                  ${index >= 0 && open.length > 1 ? button({ label: `Remover ${s.label}`, iconOnly: true, icon: 'trash', variant: 'ghost', size: 'sm', action: 'stage:remove', data: { id: s.id } }) : ''}`}
+            </span>
+          </li>`;
+        })}
+      </ol>
+      <form class="inline-form" data-form="stage:add">
+        <label class="visually-hidden" for="stage-new">Nova etapa</label>
+        <input id="stage-new" class="input" name="label" placeholder="Nome da nova etapa (entra antes de Ganho)" autocomplete="off" maxlength="40" />
+        <button class="btn btn--secondary" type="submit">${icon('plus', 16)}<span>Adicionar etapa</span></button>
+      </form>
+      <p class="muted small">Para renomear, edite o texto e clique fora do campo.</p>
+      <footer class="form-actions"><span></span><div class="form-actions__main"><button type="button" class="btn btn--primary" data-action="modal:close">Concluir</button></div></footer>
+    `,
+  });
+}
+
+function openRemoveStage(id: string): void {
+  const { data } = store();
+  const count = data.opportunities.filter((o) => o.stage === id).length;
+  const targets = pipelineStages(data).filter((s) => s.id !== id);
+  openModal({
+    title: `Remover "${stageLabel(data, id)}"`,
+    description: `${pluralize(count, 'oportunidade está', 'oportunidades estão')} nesta etapa. Escolha para onde mover antes de remover — nada será perdido.`,
+    body: html`
+      <form class="form" data-form="stage:remove" data-id="${id}">
+        ${selectField({ name: 'target', label: 'Mover as oportunidades para', value: openStages(data).find((s) => s !== id) ?? '', options: targets.map((s) => ({ value: s.id, label: s.label })) })}
+        ${formActions('Mover e remover etapa', button({ label: 'Voltar', action: 'stage:back', variant: 'ghost', icon: 'arrowLeft' }))}
+      </form>
+    `,
+  });
+}
+
+registerForms({
+  'stage:add': async (_form, values) => {
+    requirePermission('commercial:edit');
+    const label = values.text('label');
+    if (!label) return;
+    await store().apply((draft) => addPipelineStage(draft, label));
+    toast('Etapa adicionada.');
+    openStagesModal();
+  },
+  'stage:remove': async (form, values) => {
+    requirePermission('commercial:edit');
+    const moved = await store().apply((draft, ctx) => removePipelineStage(draft, form.dataset.id!, values.text('target'), ctx));
+    toast(`Etapa removida. ${pluralize(moved, 'oportunidade movida', 'oportunidades movidas')}.`);
+    openStagesModal();
+  },
+});
+
 export const commercialView: View = {
-  title: (route: Route) => findOpportunity(store().data, route.params[0])?.company ?? 'Comercial',
+  title: (route: Route) =>
+    route.params[0] === 'propostas'
+      ? findProposal(store().data, route.params[1])?.title ?? 'Propostas'
+      : findOpportunity(store().data, route.params[0])?.company ?? 'Comercial',
   render: (route: Route) => {
+    if (route.params[0] === 'propostas') {
+      if (!route.params[1]) return renderProposals();
+      const proposal = findProposal(store().data, route.params[1]);
+      if (proposal) return renderProposalDetail(proposal);
+      return html`${pageHeader({ title: 'Proposta não encontrada', back: { href: '#/comercial/propostas', label: 'Propostas' } })}
+        <div class="panel">${emptyState({ icon: 'file', title: 'Esta proposta não existe ou foi excluída.' })}</div>`;
+    }
     if (route.params[0]) {
       const opp = findOpportunity(store().data, route.params[0]);
       if (opp) return renderDetail(opp);

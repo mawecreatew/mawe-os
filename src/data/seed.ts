@@ -9,9 +9,16 @@
  * Somente Maria Eduarda e Wesley (os sócios) são pessoas reais.
  */
 import { addDays, todayISO } from '../core/dates.ts';
-import { DEFAULT_DELIVERY_CHECKLIST, DEFAULT_PRODUCTION_STAGES } from '../domain/templates.ts';
+import { lastDayOfMonth, monthKey, monthLabel } from '../core/dates.ts';
+import { fillDefaults } from '../domain/normalize.ts';
+import { DEFAULT_DELIVERY_CHECKLIST, DEFAULT_PRODUCTION_STAGES, PROJECT_TEMPLATES } from '../domain/templates.ts';
 import type {
   AppData,
+  Campaign,
+  ContentItem,
+  FinanceEntry,
+  Proposal,
+  RecurringExpense,
   ChecklistItem,
   Client,
   Decision,
@@ -31,7 +38,7 @@ export const USERS: User[] = [
 ];
 
 export function createEmptyData(now: Date = new Date()): AppData {
-  return {
+  return fillDefaults({
     schemaVersion: SCHEMA_VERSION,
     users: structuredClone(USERS),
     opportunities: [],
@@ -42,7 +49,7 @@ export function createEmptyData(now: Date = new Date()): AppData {
     decisions: [],
     conversations: [],
     meta: { dataset: 'empty', createdAt: now.toISOString() },
-  };
+  } as unknown as AppData);
 }
 
 export function createDemoData(now: Date = new Date()): AppData {
@@ -142,7 +149,12 @@ export function createDemoData(now: Date = new Date()): AppData {
   const checklist = (doneCount: number, prefix: string): ChecklistItem[] =>
     DEFAULT_DELIVERY_CHECKLIST.map((text, i) => ({ id: `chk_${prefix}${i}`, text, done: i < doneCount }));
 
-  const projects: Project[] = [
+  const siteProject = (p: Omit<Project, 'type' | 'extra'>): Project => ({
+    ...p,
+    type: 'site',
+    extra: { artsFolder: '', social: '', amount: null, billingDay: null },
+  });
+  const projects: Project[] = ([
     {
       id: 'prj_trigo',
       name: 'Site institucional e cardápio',
@@ -199,7 +211,51 @@ export function createDemoData(now: Date = new Date()): AppData {
       links: { repository: '', production: '', staging: '' },
       createdAt: ts(-4),
     },
-  ];
+  ] as Array<Omit<Project, 'type' | 'extra'>>).map(siteProject);
+
+  // Plano mensal (manutenção) da Lúmen: mês passado concluído e mês atual em andamento.
+  const month = monthKey(today);
+  const lastMonth = monthKey(d(-31));
+  const planBase = PROJECT_TEMPLATES.plano_mensal;
+  const plan = (id: string, period: string, done: boolean): Project => ({
+    id,
+    name: `Plano Essencial – Lúmen Arquitetura – ${monthLabel(period)}`,
+    clientId: 'cli_lumen',
+    ownerIds: ['wesley'],
+    status: done ? 'publicado' : 'em_andamento',
+    startDate: `${period}-01`,
+    dueDate: lastDayOfMonth(period),
+    description: 'Pequenas alterações e suporte básico no site publicado.',
+    stages: planBase.stages.map((name, i) => ({ id: `stg_${id}${i}`, name, status: done || i === 0 ? 'concluida' : i === 1 ? 'em_andamento' : 'pendente' })),
+    checklist: planBase.checklist.map((text, i) => ({ id: `chk_${id}${i}`, text, done: done || i === 0 })),
+    links: { repository: '', production: '', staging: '' },
+    type: 'plano_mensal',
+    extra: { artsFolder: 'drive.google.com/demo-lumen', social: '@lumen.demo', amount: 49, billingDay: 10 },
+    period,
+    seriesId: 'prj_lumen_plano1',
+    serviceId: 'svc_essencial',
+    createdAt: ts(period === month ? -2 : -33),
+  });
+  projects.push(plan('prj_lumen_plano1', lastMonth, true), plan('prj_lumen_plano2', month, false));
+  projects.push({
+    id: 'prj_trigo_conteudo',
+    name: 'Pacote de feed e stories',
+    clientId: 'cli_trigo',
+    ownerIds: ['maria'],
+    status: 'em_andamento',
+    startDate: d(-5),
+    dueDate: d(20),
+    description: '8 posts no feed e 12 stories para o lançamento do cardápio novo.',
+    stages: PROJECT_TEMPLATES.pacote_conteudo.stages.map((name, i) => ({ id: `stg_tc${i}`, name, status: i === 0 ? 'concluida' : i === 1 ? 'em_andamento' : 'pendente' })),
+    checklist: ['8 posts no feed', '12 stories', ...PROJECT_TEMPLATES.pacote_conteudo.checklist.slice(2)].map((text, i) => ({ id: `chk_tc${i}`, text, done: false })),
+    links: { repository: '', production: '', staging: '' },
+    type: 'pacote_conteudo',
+    extra: { artsFolder: 'canva.com/demo-trigo', social: '@trigofino.demo', amount: 450, billingDay: null },
+    period: null,
+    seriesId: null,
+    serviceId: null,
+    createdAt: ts(-5),
+  });
 
   // ------------------------------------------------------------ Oportunidades
   const opp = (o: Omit<Opportunity, 'clientId' | 'isDemo'> & { clientId?: string }): Opportunity => ({
@@ -501,7 +557,87 @@ export function createDemoData(now: Date = new Date()): AppData {
 
   const markDemo = <T extends { isDemo?: boolean }>(items: T[]) => items.map((i) => ({ ...i, isDemo: true }));
 
-  return {
+  // ------------------------------------------------------------ Prospecção (contatos e respostas, para as metas)
+  const milestones: Record<string, [number, number | null]> = {
+    opp_moenda: [-14, -9],
+    opp_nautica: [-10, -6],
+    opp_aurora: [-3, null],
+  };
+  for (const o of opportunities) {
+    const m = milestones[o.id];
+    o.contactedAt = m ? d(m[0]) : null;
+    o.repliedAt = m && m[1] !== null ? d(m[1]) : null;
+  }
+
+  // ------------------------------------------------------------ Financeiro
+  const entry = (e: Omit<FinanceEntry, 'clientId' | 'recurringId' | 'notes' | 'createdAt'> & Partial<FinanceEntry>): FinanceEntry => ({
+    clientId: null,
+    recurringId: null,
+    notes: '',
+    createdAt: ts(-3),
+    ...e,
+  });
+  const entries: FinanceEntry[] = [
+    entry({ id: 'fin_canva', kind: 'saida', description: 'Canva Pro', amount: 34.9, dueDate: d(-6), paidAt: d(-6), category: 'Ferramentas', paidBy: 'maria' }),
+    entry({ id: 'fin_ads', kind: 'saida', description: 'Recarga Meta Ads', amount: 60, dueDate: d(-2), paidAt: d(-2), category: 'Anúncios', paidBy: 'agencia' }),
+    entry({ id: 'fin_imposto', kind: 'saida', description: 'DAS MEI', amount: 75.6, dueDate: d(5), paidAt: null, category: 'Impostos', paidBy: 'agencia' }),
+    entry({ id: 'fin_indicacao', kind: 'entrada', description: 'Arte avulsa para evento', amount: 120, dueDate: d(-1), paidAt: d(-1), category: 'Serviço avulso', paidBy: 'agencia' }),
+  ];
+  const recurring: RecurringExpense[] = [
+    { id: 'rec_claude', description: 'Claude Pro', amount: 110, category: 'Ferramentas', frequency: 'mensal', startDate: d(3), active: true, paidBy: 'agencia', createdAt: ts(-40) },
+    { id: 'rec_dominio', description: 'Domínio .com.br', amount: 40, category: 'Domínio', frequency: 'anual', startDate: d(12), active: true, paidBy: 'wesley', createdAt: ts(-40) },
+  ];
+
+  // ------------------------------------------------------------ Calendário de conteúdo
+  const content = (c: Omit<ContentItem, 'caption' | 'artLink' | 'notes' | 'createdAt' | 'time'> & Partial<ContentItem>): ContentItem => ({
+    caption: '',
+    artLink: '',
+    notes: '',
+    time: '18:00',
+    createdAt: ts(-4),
+    ...c,
+  });
+  const contents: ContentItem[] = [
+    content({ id: 'cnt_1', title: 'Antes e depois de um site', clientId: null, projectId: null, date: d(-2), network: 'Instagram', format: 'Carrossel', status: 'postado' }),
+    content({ id: 'cnt_2', title: 'Bastidores: como criamos um site', clientId: null, projectId: null, date: d(1), network: 'Instagram', format: 'Reels', status: 'em_criacao' }),
+    content({ id: 'cnt_3', title: 'Lançamento do cardápio novo', clientId: 'cli_trigo', projectId: 'prj_trigo_conteudo', date: d(2), time: '11:30', network: 'Instagram', format: 'Post no feed', status: 'aguardando_aprovacao', caption: 'Chegou o cardápio de primavera! 🌼' }),
+    content({ id: 'cnt_4', title: 'Pão do dia', clientId: 'cli_trigo', projectId: 'prj_trigo_conteudo', date: d(4), time: '07:30', network: 'Instagram', format: 'Story', status: 'aprovado' }),
+    content({ id: 'cnt_5', title: 'Dica: por que ter um site', clientId: null, projectId: null, date: d(6), network: 'TikTok', format: 'Vídeo', status: 'ideia' }),
+    content({ id: 'cnt_6', title: 'Obra concluída – sala de estar', clientId: 'cli_lumen', projectId: 'prj_lumen_plano2', date: d(8), network: 'Instagram', format: 'Carrossel', status: 'ideia' }),
+  ];
+
+  // ------------------------------------------------------------ Tráfego pago
+  const campaigns: Campaign[] = [
+    { id: 'cmp_1', name: 'Mensagens – sites para comércios', clientId: null, platform: 'Meta Ads', objective: 'Mensagens', startDate: d(-9), endDate: d(-2), budget: 70, spent: 68.4, reach: 5400, clicks: 132, results: 9, learnings: 'Vídeo curto mostrando o site no celular trouxe mais conversas que imagem estática.', createdAt: ts(-9) },
+    { id: 'cmp_2', name: 'Seguidores – portfólio', clientId: null, platform: 'Meta Ads', objective: 'Seguidores', startDate: d(-1), endDate: d(6), budget: 50, spent: 12, reach: 1100, clicks: 40, results: 14, learnings: '', createdAt: ts(-1) },
+  ];
+
+  // ------------------------------------------------------------ Propostas
+  const proposals: Proposal[] = [
+    {
+      id: 'ppl_moenda',
+      title: 'Proposta – Café Moenda',
+      clientId: null,
+      opportunityId: 'opp_moenda',
+      items: [
+        { id: 'itm_mo1', serviceId: 'svc_institucional', name: 'Site institucional', category: 'site', price: 900, billing: 'unico', quantity: 1 },
+        { id: 'itm_mo2', serviceId: 'svc_essencial', name: 'Plano Essencial', category: 'plano_mensal', price: 49, billing: 'mensal', quantity: 1 },
+      ],
+      status: 'enviada',
+      sentAt: d(-4),
+      decidedAt: null,
+      validUntil: d(10),
+      notes: 'Cliente pediu opção de parcelamento.',
+      contractLink: '',
+      startDate: null,
+      paymentTerms: '50% no início e 50% na entrega',
+      projectIds: [],
+      createdBy: 'maria',
+      createdAt: ts(-4),
+    },
+  ];
+
+  return fillDefaults({
     schemaVersion: SCHEMA_VERSION,
     users: structuredClone(USERS),
     opportunities: markDemo(opportunities),
@@ -511,6 +647,11 @@ export function createDemoData(now: Date = new Date()): AppData {
     library: markDemo(library),
     decisions: markDemo(decisions),
     conversations: [],
+    finance: { entries: markDemo(entries), recurring: markDemo(recurring) },
+    contents: markDemo(contents),
+    campaigns: markDemo(campaigns),
+    proposals: markDemo(proposals),
+    goals: { [month]: { revenue: 3000, newClients: 2, contacts: 30, proposalsSent: 4, proposalsAccepted: 2 } },
     meta: { dataset: 'demo', createdAt: now.toISOString() },
-  };
+  } as unknown as AppData);
 }

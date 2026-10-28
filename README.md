@@ -3,7 +3,7 @@
 Escritório digital privado da **Mawe Create** — operação diária, comercial, clientes,
 projetos, tarefas, biblioteca e agentes de IA, compartilhado por Maria Eduarda e Wesley.
 
-> **Status: v0.3.** Funciona de verdade no navegador. Tem dois modos:
+> **Status: v0.4.** Funciona de verdade no navegador. Tem dois modos:
 > - **Protótipo local** (padrão): sem login, com dados **fictícios** salvos só neste navegador.
 > - **Com login (Supabase)**: cada sócio entra com sua conta e os dois veem os mesmos dados.
 >   Para ativar, siga [`docs/SUPABASE.md`](docs/SUPABASE.md).
@@ -41,14 +41,26 @@ O teste de navegação usa o Playwright. Se for a primeira vez na sua máquina, 
 
 ## O que já funciona
 
-- **Painel**: saudação pelo horário, prioridades do dia, atrasadas, próximos prazos,
-  resumo comercial, projetos em andamento e acesso aos agentes.
-- **Comercial**: funil com 9 etapas (arrastar e soltar), lista, cadastro/edição,
-  histórico, próxima ação, conversão de oportunidade ganha em cliente.
+- **Painel**: saudação pelo horário, **metas do mês** (faturamento, clientes novos,
+  contatos de prospecção por origem, propostas enviadas e aceitas), prioridades do dia,
+  atrasadas, próximos prazos, **contas a pagar e a receber**, resumo comercial e projetos.
+- **Comercial**: funil com **etapas configuráveis** pelos sócios (renomear, adicionar,
+  remover movendo as oportunidades, reordenar; "Ganho" e "Perdido" fixos no fim), arrastar e
+  soltar, lista, histórico, marcação de "contato feito" e "respondeu", conversão em cliente.
+- **Comercial › Propostas e contratos**: proposta com serviços do catálogo e total
+  automático, status (rascunho → enviada → aceita/recusada), link do contrato assinado,
+  início e forma de pagamento; ao aceitar, cria cliente, projetos e parcelas.
 - **Clientes**: cadastro, projetos relacionados, status de contratação, parcelas
   registradas manualmente (marcar como paga), pendências.
-- **Projetos**: etapas de produção, checklist de entrega, links (GitHub, site, teste),
-  decisões e tarefas do projeto.
+- **Projetos**: tipos (site, plano mensal, pacote de conteúdo, sistema, outro), cada um com
+  suas etapas, checklist e campos; plano mensal organizado por mês com "Renovar para o
+  próximo mês"; filtro por tipo; excluir com confirmação; decisões e tarefas do projeto.
+- **Calendário de conteúdo**: posts, carrosséis, stories e reels dos clientes e da
+  MaweCreate, por mês ou semana, com cores por cliente ou status e ligação com os projetos.
+- **Financeiro**: entradas e saídas, parcelas de clientes automáticas, despesas recorrentes
+  (mensais/anuais) geradas sozinhas, quem pagou do próprio bolso, resumo e filtros.
+- **Tráfego pago**: campanhas, resultados anotados à mão, custo por resultado e aprendizados.
+- **Serviços e preços**: catálogo único (com a tabela de preços inicial), ativar/desativar.
 - **Tarefas**: criar, editar, concluir, excluir; responsável, prioridade, prazo,
   situação e vínculo com projeto/oportunidade/cliente; filtros e busca.
 - **Biblioteca**: mensagens, propostas, checklists, processos e registro de decisões.
