@@ -6,6 +6,7 @@ import { cx, html, type SafeHtml } from '../core/html.ts';
 import {
   deleteFinanceEntry,
   deleteRecurring,
+  isWithdrawal,
   monthMovements,
   payRecurringOccurrence,
   recurringDates,
@@ -19,7 +20,7 @@ import {
   type Movement,
   type RecurringInput,
 } from '../domain/finance.ts';
-import { CLIENT_INCOME_CATEGORY, EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../domain/labels.ts';
+import { CLIENT_INCOME_CATEGORY, EXPENSE_CATEGORIES, INCOME_CATEGORIES, WITHDRAWAL_CATEGORY } from '../domain/labels.ts';
 import { toggleInstallmentPaid } from '../domain/operations.ts';
 import { teamMembers } from '../domain/people.ts';
 import type { AppData, FinanceEntry, Payer, RecurringExpense } from '../domain/types.ts';
@@ -65,7 +66,7 @@ function openEntryForm(kind: 'entrada' | 'saida', entry?: FinanceEntry): void {
     clientId: null,
     notes: '',
   };
-  const categories = [...new Set([...(v.kind === 'saida' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES), v.category])];
+  const categories = [...new Set([...(v.kind === 'saida' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES), v.category])].filter((c) => c !== WITHDRAWAL_CATEGORY);
   openModal({
     title: entry ? 'Editar lançamento' : v.kind === 'saida' ? 'Nova despesa' : 'Nova entrada avulsa',
     description: v.kind === 'entrada' && !entry ? 'Pagamentos de clientes já aparecem sozinhos (vêm das parcelas em Clientes). Use aqui para outras entradas.' : undefined,
@@ -86,7 +87,42 @@ function openEntryForm(kind: 'entrada' | 'saida', entry?: FinanceEntry): void {
           ${selectField({ name: 'clientId', label: 'Cliente (opcional)', value: v.clientId ?? '', emptyLabel: 'Nenhum', options: data.clients.map((c) => ({ value: c.id, label: c.company })) })}
         </div>
         ${textareaField({ name: 'notes', label: 'Observações', value: v.notes, rows: 2 })}
-        ${formActions(entry ? 'Salvar' : 'Lançar')}
+        ${formActions(
+          entry ? 'Salvar' : 'Lançar',
+          entry && entry.kind === 'saida' && !entry.recurringId
+            ? button({ label: 'É retirada de lucro', action: 'finance:to-withdrawal', icon: 'user', variant: 'ghost', size: 'sm', data: { id: entry.id } })
+            : undefined,
+        )}
+      </form>
+    `,
+  });
+}
+
+/** Retirada de lucro: dinheiro que sai da agência para um sócio. Não é despesa. */
+function openWithdrawalForm(entry?: FinanceEntry): void {
+  const { data } = store();
+  const partners = teamMembers(data);
+  const editing = entry && isWithdrawal(entry);
+  const recipient = entry && entry.paidBy !== 'agencia' ? entry.paidBy : (partners[0]?.id ?? '');
+  openModal({
+    title: editing ? 'Editar retirada' : 'Retirada dos sócios',
+    description: 'O lucro que vocês tiram da agência. Não conta como despesa: aparece separado no resumo do mês.',
+    body: html`
+      <form class="form" data-form="finance:withdrawal" data-id="${entry?.id ?? ''}">
+        ${textField({ name: 'description', label: 'Descrição', value: entry?.description ?? 'Retirada de lucro', required: true, autofocus: true })}
+        <div class="form-grid">
+          ${textField({ name: 'amount', label: 'Valor (R$)', value: entry ? String(entry.amount).replace('.', ',') : '', required: true, inputmode: 'decimal', placeholder: '0,00' })}
+          ${selectField({ name: 'paidBy', label: 'Para quem', value: recipient, options: partners.map((u) => ({ value: u.id, label: u.shortName })), hint: 'Se for para os dois, lance uma retirada para cada um.' })}
+          ${textField({ name: 'dueDate', label: 'Data', type: 'date', value: entry?.dueDate ?? today(), required: true })}
+          ${selectField({
+            name: 'situation',
+            label: 'Situação',
+            value: !entry || entry.paidAt ? 'pago' : 'aberto',
+            options: [{ value: 'pago', label: 'Já retirado' }, { value: 'aberto', label: 'Combinado, ainda não retirado' }],
+          })}
+        </div>
+        ${textareaField({ name: 'notes', label: 'Observações', value: entry?.notes ?? '', rows: 2 })}
+        ${formActions(entry ? 'Salvar' : 'Registrar retirada')}
       </form>
     `,
   });
@@ -144,6 +180,27 @@ registerForms({
     closeModal();
     toast(id ? 'Lançamento atualizado.' : kind === 'saida' ? 'Despesa lançada.' : 'Entrada lançada.');
   },
+  'finance:withdrawal': async (form, values) => {
+    requirePermission('finance:edit');
+    const dueDate = values.text('dueDate');
+    const id = form.dataset.id || null;
+    const previous = id ? store().data.finance.entries.find((e) => e.id === id) : undefined;
+    const paid = values.text('situation') === 'pago';
+    const input: FinanceEntryInput = {
+      kind: 'saida',
+      description: values.text('description'),
+      amount: readAmount(values.text('amount')),
+      dueDate,
+      paidAt: paid ? (previous?.paidAt ?? dueDate) : null,
+      category: WITHDRAWAL_CATEGORY,
+      paidBy: values.text('paidBy') as Payer,
+      clientId: null,
+      notes: values.text('notes'),
+    };
+    await store().apply((draft, ctx) => saveFinanceEntry(draft, id, input, ctx));
+    closeModal();
+    toast(id ? 'Retirada salva.' : 'Retirada registrada.');
+  },
   'recurring:save': async (form, values) => {
     requirePermission('finance:edit');
     const input: RecurringInput = {
@@ -179,12 +236,20 @@ registerActions({
   'finance:new-in': () => openEntryForm('entrada'),
   'finance:new-out': () => openEntryForm('saida'),
   'finance:new-recurring': () => openRecurringForm(),
+  'finance:new-withdrawal': () => openWithdrawalForm(),
+  'finance:to-withdrawal': (el) => {
+    const entry = store().data.finance.entries.find((e) => e.id === el.dataset.id);
+    if (!entry) return;
+    closeModal();
+    openWithdrawalForm(entry);
+  },
   'finance:toggle': async (el) => {
     await toggleMovement(el.dataset.key!);
   },
   'finance:edit': (el) => {
     const entry = store().data.finance.entries.find((e) => e.id === el.dataset.id);
-    if (entry) openEntryForm(entry.kind, entry);
+    if (entry && isWithdrawal(entry)) openWithdrawalForm(entry);
+    else if (entry) openEntryForm(entry.kind, entry);
   },
   'finance:delete': async (el) => {
     requirePermission('finance:edit');
@@ -238,24 +303,27 @@ function movementRow(data: AppData, m: Movement): SafeHtml {
   const overdue = !m.paidAt && m.dueDate < t;
   const client = m.clientId ? data.clients.find((c) => c.id === m.clientId) : undefined;
   const entry = m.entryId ? data.finance.entries.find((e) => e.id === m.entryId) : undefined;
-  const paidLabel = m.kind === 'entrada' ? 'Recebida' : 'Paga';
+  const withdrawal = isWithdrawal(m);
+  const paidLabel = m.kind === 'entrada' ? 'Recebida' : withdrawal ? 'Retirado' : 'Paga';
   return html`<li class="${cx('movement', m.paidAt && 'is-paid', overdue && 'is-overdue')}">
     <input type="checkbox" class="check" ${m.paidAt ? 'checked' : ''} ${canEdit ? '' : 'disabled'} data-change="finance:toggle" data-key="${m.key}"
       aria-label="${m.paidAt ? 'Desmarcar' : 'Marcar como'} ${m.kind === 'entrada' ? 'recebida' : 'paga'}: ${m.description}" />
-    <span class="${cx('movement__kind', m.kind === 'entrada' ? 'is-in' : 'is-out')}" aria-hidden="true">${icon(m.kind === 'entrada' ? 'arrowDown' : 'arrowUp', 14)}</span>
+    <span class="${cx('movement__kind', m.kind === 'entrada' ? 'is-in' : withdrawal ? 'is-withdrawal' : 'is-out')}" aria-hidden="true">${icon(m.kind === 'entrada' ? 'arrowDown' : withdrawal ? 'user' : 'arrowUp', 14)}</span>
     <div class="movement__main">
       <span class="movement__title">${m.description} ${entry ? demoTag(entry) : ''}</span>
       <span class="movement__meta">
         ${m.category}
         ${m.source === 'installment' ? html` · <a href="#/clientes/${m.clientId}">parcela em Clientes</a>` : client ? html` · <a href="#/clientes/${client.id}">${client.company}</a>` : ''}
         ${m.recurringId ? html` · ${icon('repeat', 12)} recorrente` : ''}
-        ${m.kind === 'saida' && m.paidBy !== 'agencia' ? html` · ${badge(`Do bolso: ${payerName(data, m.paidBy)}`, 'warning')}` : ''}
+        ${withdrawal
+          ? html` · ${badge(`Para: ${payerName(data, m.paidBy)}`, 'accent')}`
+          : m.kind === 'saida' && m.paidBy !== 'agencia' ? html` · ${badge(`Do bolso: ${payerName(data, m.paidBy)}`, 'warning')}` : ''}
       </span>
       <span class="${cx('movement__date', overdue && 'text-danger')}">
-        ${m.paidAt ? `${paidLabel} em ${formatShortDate(m.paidAt)}` : `${m.kind === 'entrada' ? 'Previsto' : 'Vence'} ${formatShortDate(m.dueDate)} · ${relativeDay(m.dueDate, t)}`}
+        ${m.paidAt ? `${paidLabel} em ${formatShortDate(m.paidAt)}` : `${m.kind === 'entrada' ? 'Previsto' : withdrawal ? 'Combinado para' : 'Vence'} ${formatShortDate(m.dueDate)} · ${relativeDay(m.dueDate, t)}`}
       </span>
     </div>
-    <span class="${cx('movement__amount', m.kind === 'entrada' ? 'text-success' : 'movement__amount--out')}">${m.kind === 'entrada' ? '+' : '−'} ${formatCurrency(m.amount, true)}</span>
+    <span class="${cx('movement__amount', m.kind === 'entrada' ? 'text-success' : withdrawal ? 'movement__amount--withdrawal' : 'movement__amount--out')}">${m.kind === 'entrada' ? '+' : '−'} ${formatCurrency(m.amount, true)}</span>
     <span class="movement__actions">
       ${canEdit && m.source === 'entry'
         ? html`${button({ label: 'Editar', iconOnly: true, icon: 'edit', variant: 'ghost', size: 'sm', action: 'finance:edit', data: { id: m.entryId! } })}
@@ -271,6 +339,7 @@ function renderMovements(data: AppData): SafeHtml {
   const list = ui.kind === 'todos' ? all : all.filter((m) => m.kind === ui.kind);
   const s = summarizeMovements(all);
   const partners = Object.entries(s.paidByPartner);
+  const withdrawnBy = Object.entries(s.withdrawnByPartner);
   const t = today();
   const overdue = upcomingBills(data, t, 0).filter((m) => m.dueDate < t);
   const categories = usedCategories(data);
@@ -293,11 +362,20 @@ function renderMovements(data: AppData): SafeHtml {
       </label>
     </div>
 
-    <div class="stats">
+    <div class="stats stats--3">
       ${statCard({ label: 'Entrou', value: formatCurrency(s.received, true), hint: s.toReceive ? `+ ${formatCurrency(s.toReceive, true)} a receber` : 'Nada pendente a receber', tone: 'success' })}
-      ${statCard({ label: 'Saiu', value: formatCurrency(s.paid, true), hint: s.toPay ? `+ ${formatCurrency(s.toPay, true)} a pagar` : 'Nada pendente a pagar' })}
-      ${statCard({ label: 'Saldo do mês', value: formatCurrency(s.balance, true), hint: 'Entrou − saiu', tone: s.balance < 0 ? 'danger' : undefined })}
-      ${statCard({ label: 'Previsto até o fim do mês', value: formatCurrency(s.balance + s.toReceive - s.toPay, true), hint: 'Se tudo for pago e recebido' })}
+      ${statCard({ label: 'Despesas', value: formatCurrency(s.paid, true), hint: s.toPay ? `+ ${formatCurrency(s.toPay, true)} a pagar` : 'Nada pendente a pagar' })}
+      ${statCard({ label: 'Lucro do mês', value: formatCurrency(s.profit, true), hint: 'Entrou − despesas', tone: s.profit < 0 ? 'danger' : 'success' })}
+      ${statCard({
+        label: 'Retirado pelos sócios',
+        value: formatCurrency(s.withdrawn, true),
+        hint: withdrawnBy.length
+          ? withdrawnBy.map(([id, value]) => `${payerName(data, id)}: ${formatCurrency(value, true)}`).join(' · ') + (s.toWithdraw ? ` · + ${formatCurrency(s.toWithdraw, true)} combinado` : '')
+          : s.toWithdraw ? `${formatCurrency(s.toWithdraw, true)} combinado` : 'Nenhuma retirada no mês',
+        tone: 'accent',
+      })}
+      ${statCard({ label: 'Ficou no caixa', value: formatCurrency(s.balance, true), hint: 'Lucro − retiradas', tone: s.balance < 0 ? 'danger' : undefined })}
+      ${statCard({ label: 'Previsto até o fim do mês', value: formatCurrency(s.balance + s.toReceive - s.toPay - s.toWithdraw, true), hint: 'Se tudo for pago, recebido e retirado' })}
     </div>
 
     ${overdue.length
@@ -367,6 +445,7 @@ export const financeView: View = {
         subtitle: 'Entradas e saídas da conta da agência · registro manual, não movimenta dinheiro',
         actions: canEdit
           ? html`${button({ label: 'Despesa recorrente', action: 'finance:new-recurring', icon: 'repeat' })}
+              ${button({ label: 'Retirada', action: 'finance:new-withdrawal', icon: 'user' })}
               ${button({ label: 'Nova entrada', action: 'finance:new-in', icon: 'arrowDown' })}
               ${button({ label: 'Nova despesa', action: 'finance:new-out', variant: 'primary', icon: 'plus' })}`
           : undefined,

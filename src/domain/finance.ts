@@ -11,7 +11,7 @@
  */
 import { addDays, addMonths, diffInDays, isValidISODate, monthKey, type ISODate, type MonthKey } from '../core/dates.ts';
 import { createId } from '../core/id.ts';
-import { CLIENT_INCOME_CATEGORY } from './labels.ts';
+import { CLIENT_INCOME_CATEGORY, WITHDRAWAL_CATEGORY } from './labels.ts';
 import type { ActionContext } from './operations.ts';
 import type { AppData, FinanceEntry, ID, Payer, RecurringExpense } from './types.ts';
 
@@ -31,6 +31,11 @@ function validPayer(draft: AppData, payer: Payer): Payer {
 
 export type FinanceEntryInput = Pick<FinanceEntry, 'kind' | 'description' | 'amount' | 'dueDate' | 'paidAt' | 'category' | 'paidBy' | 'clientId' | 'notes'>;
 
+/** Retirada de lucro de um sócio (não é despesa). */
+export function isWithdrawal(m: Pick<FinanceEntry, 'kind' | 'category'>): boolean {
+  return m.kind === 'saida' && m.category === WITHDRAWAL_CATEGORY;
+}
+
 function checkEntry(draft: AppData, input: FinanceEntryInput): void {
   if (!input.description.trim()) throw new Error('Descreva o lançamento.');
   if (!(input.amount > 0)) throw new Error('O valor deve ser maior que zero.');
@@ -38,6 +43,8 @@ function checkEntry(draft: AppData, input: FinanceEntryInput): void {
   if (input.paidAt !== null && !isValidISODate(input.paidAt)) throw new Error('Data de pagamento inválida.');
   if (input.clientId && !draft.clients.some((c) => c.id === input.clientId)) throw new Error('Cliente não encontrado.');
   validPayer(draft, input.paidBy);
+  // Na retirada, `paidBy` guarda o sócio que recebeu.
+  if (isWithdrawal(input) && input.paidBy === 'agencia') throw new Error('Escolha para qual sócio foi a retirada.');
 }
 
 export function saveFinanceEntry(draft: AppData, id: ID | null, input: FinanceEntryInput, ctx: ActionContext): FinanceEntry {
@@ -241,9 +248,17 @@ export function monthMovements(data: AppData, month: MonthKey, category?: string
 export interface MonthSummary {
   /** Recebido no mês. */
   received: number;
-  /** Pago no mês. */
+  /** Despesas pagas no mês (sem contar as retiradas dos sócios). */
   paid: number;
-  /** Recebido − pago. */
+  /** Lucro do mês: recebido − despesas pagas. */
+  profit: number;
+  /** Retiradas de lucro já feitas pelos sócios no mês. */
+  withdrawn: number;
+  /** Retiradas combinadas e ainda não feitas. */
+  toWithdraw: number;
+  /** Retirado por sócio no mês. */
+  withdrawnByPartner: Record<ID, number>;
+  /** Ficou no caixa: lucro − retiradas. */
   balance: number;
   /** Ainda a receber com vencimento no mês. */
   toReceive: number;
@@ -254,9 +269,16 @@ export interface MonthSummary {
 }
 
 export function summarizeMovements(list: Movement[]): MonthSummary {
-  const s: MonthSummary = { received: 0, paid: 0, balance: 0, toReceive: 0, toPay: 0, paidByPartner: {} };
+  const s: MonthSummary = { received: 0, paid: 0, profit: 0, withdrawn: 0, toWithdraw: 0, withdrawnByPartner: {}, balance: 0, toReceive: 0, toPay: 0, paidByPartner: {} };
   for (const m of list) {
-    if (m.kind === 'entrada') {
+    if (isWithdrawal(m)) {
+      if (m.paidAt) {
+        s.withdrawn += m.amount;
+        s.withdrawnByPartner[m.paidBy] = (s.withdrawnByPartner[m.paidBy] ?? 0) + m.amount;
+      } else {
+        s.toWithdraw += m.amount;
+      }
+    } else if (m.kind === 'entrada') {
       if (m.paidAt) s.received += m.amount;
       else s.toReceive += m.amount;
     } else if (m.paidAt) {
@@ -266,7 +288,8 @@ export function summarizeMovements(list: Movement[]): MonthSummary {
       s.toPay += m.amount;
     }
   }
-  s.balance = s.received - s.paid;
+  s.profit = s.received - s.paid;
+  s.balance = s.profit - s.withdrawn;
   return s;
 }
 

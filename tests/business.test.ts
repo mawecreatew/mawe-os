@@ -29,7 +29,7 @@ import {
   toggleFinanceEntryPaid,
   upcomingBills,
 } from '../src/domain/finance.ts';
-import { openStages, pipelineStages } from '../src/domain/labels.ts';
+import { openStages, pipelineStages, WITHDRAWAL_CATEGORY } from '../src/domain/labels.ts';
 import {
   addPipelineStage,
   createOpportunity,
@@ -209,6 +209,20 @@ describe('financeiro', () => {
     assert.throws(() => saveFinanceEntry(data, null, { kind: 'saida', description: 'x', amount: 1, dueDate: TODAY, paidAt: null, category: 'Outros', paidBy: 'alguem', clientId: null, notes: '' }, ctx), /quem pagou/);
     deleteFinanceEntry(data, out.id);
     assert.equal(monthSummary(data, MONTH).toPay, 0);
+  });
+
+  it('retirada dos sócios fica fora das despesas e do lucro', () => {
+    data.finance = { entries: [], recurring: [] };
+    for (const c of data.clients) c.installments = [];
+    saveFinanceEntry(data, null, { kind: 'entrada', description: 'Site', amount: 1000, dueDate: TODAY, paidAt: TODAY, category: 'Serviço avulso', paidBy: 'agencia', clientId: null, notes: '' }, ctx);
+    saveFinanceEntry(data, null, { kind: 'saida', description: 'Hospedagem', amount: 100, dueDate: TODAY, paidAt: TODAY, category: 'Hospedagem', paidBy: 'agencia', clientId: null, notes: '' }, ctx);
+    saveFinanceEntry(data, null, { kind: 'saida', description: 'Lucro', amount: 300, dueDate: TODAY, paidAt: TODAY, category: WITHDRAWAL_CATEGORY, paidBy: 'maria', clientId: null, notes: '' }, ctx);
+    saveFinanceEntry(data, null, { kind: 'saida', description: 'Lucro', amount: 200, dueDate: TODAY, paidAt: null, category: WITHDRAWAL_CATEGORY, paidBy: 'wesley', clientId: null, notes: '' }, ctx);
+    const s = monthSummary(data, MONTH);
+    assert.deepEqual([s.received, s.paid, s.profit, s.withdrawn, s.toWithdraw, s.balance], [1000, 100, 900, 300, 200, 600]);
+    assert.deepEqual(s.withdrawnByPartner, { maria: 300 });
+    assert.deepEqual(s.paidByPartner, {}, 'retirada não é "pago do bolso"');
+    assert.throws(() => saveFinanceEntry(data, null, { kind: 'saida', description: 'x', amount: 1, dueDate: TODAY, paidAt: TODAY, category: WITHDRAWAL_CATEGORY, paidBy: 'agencia', clientId: null, notes: '' }, ctx), /qual sócio/);
   });
 
   it('faturamento do mês soma parcelas recebidas e entradas avulsas', () => {

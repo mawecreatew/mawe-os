@@ -970,6 +970,7 @@
 .movement__kind { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; }
 .movement__kind.is-in { background: var(--success-bg); color: var(--success-fg); }
 .movement__kind.is-out { background: var(--danger-bg); color: var(--danger-fg); }
+.movement__kind.is-withdrawal { background: var(--accent-bg); color: var(--accent-fg); }
 .movement__main { display: flex; flex-direction: column; min-width: 0; }
 .movement__title { font-weight: 500; }
 .movement__meta { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: var(--text-sm); color: var(--text-3); }
@@ -977,6 +978,7 @@
 .movement__date { font-size: var(--text-sm); color: var(--text-3); }
 .movement__amount { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .movement__amount--out { color: var(--brown-900); }
+.movement__amount--withdrawal { color: var(--accent-fg); }
 .movement.is-paid .movement__title { color: var(--text-2); }
 .movement__actions { display: inline-flex; justify-content: flex-end; }
 .notice + .notice, .notice + .panel, .stats + .notice { margin-top: var(--space-4); }

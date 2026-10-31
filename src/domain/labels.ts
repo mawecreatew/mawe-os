@@ -205,6 +205,11 @@ export const EXPENSE_CATEGORIES = ['Ferramentas', 'Domínio', 'Hospedagem', 'Imp
 export const INCOME_CATEGORIES = ['Serviço avulso', 'Plano mensal', 'Indicação/comissão', 'Outros'];
 /** Categoria usada para os pagamentos de clientes que vêm de Clientes (parcelas). */
 export const CLIENT_INCOME_CATEGORY = 'Clientes';
+/**
+ * Categoria das retiradas de lucro dos sócios. Não é despesa: sai da conta da
+ * agência para um sócio e fica fora do "Saiu" e do lucro do mês.
+ */
+export const WITHDRAWAL_CATEGORY = 'Retirada dos sócios';
 
 export const CAMPAIGN_OBJECTIVES = ['Mensagens', 'Seguidores', 'Visitas no site', 'Engajamento', 'Alcance', 'Cadastros', 'Vendas', 'Outro'];
 
