@@ -417,6 +417,8 @@ a.stat:hover { border-color: var(--line-strong); box-shadow: var(--shadow); colo
 .stat--danger .stat__value { color: var(--danger-fg); }
 .stat--warning .stat__value { color: var(--warning-fg); }
 .stat--success .stat__value { color: var(--success-fg); }
+.stat--accent .stat__value { color: var(--accent-fg); }
+.stats--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 
 .progress {
   position: relative;
@@ -911,7 +913,7 @@ tr.is-overdue { background: #fdf8f6; }
 /* ------------------------------------------------------------ Responsivo */
 
 @media (max-width: 1100px) {
-  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stats, .stats--3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 720px) {
