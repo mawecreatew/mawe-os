@@ -17,28 +17,34 @@ interface NavItem {
   countTone?: 'alert' | 'muted';
   /** Só aparece para quem pode ver dados financeiros. */
   finance?: boolean;
+  /** Grupo do menu (o título aparece acima do primeiro item do grupo). */
+  group: string;
 }
 
+/** Menu organizado pelo caminho do dinheiro: vender → entregar → gerir. */
 const NAV: NavItem[] = [
-  { section: 'painel', label: 'Painel', icon: 'home' },
+  { group: '', section: 'painel', label: 'Painel', icon: 'home' },
   {
+    group: 'Vender',
     section: 'comercial',
     label: 'Comercial',
     icon: 'commercial',
     count: () => pipelineSummary(store().data, today()).followUpsDue,
     countTone: 'alert',
   },
-  { section: 'clientes', label: 'Clientes', icon: 'clients' },
-  { section: 'projetos', label: 'Projetos', icon: 'projects' },
-  { section: 'calendario', label: 'Calendário', icon: 'calendar' },
+  { group: 'Vender', section: 'clientes', label: 'Clientes', icon: 'clients' },
+  { group: 'Entregar', section: 'projetos', label: 'Projetos', icon: 'projects' },
   {
+    group: 'Entregar',
     section: 'tarefas',
     label: 'Tarefas',
     icon: 'tasks',
     count: () => overdueTasks(store().data, today()).length,
     countTone: 'alert',
   },
+  { group: 'Entregar', section: 'calendario', label: 'Calendário de conteúdo', icon: 'calendar' },
   {
+    group: 'Gestão',
     section: 'financeiro',
     label: 'Financeiro',
     icon: 'wallet',
@@ -46,10 +52,10 @@ const NAV: NavItem[] = [
     count: () => upcomingBills(store().data, today(), 0).length,
     countTone: 'alert',
   },
-  { section: 'trafego', label: 'Tráfego pago', icon: 'megaphone' },
-  { section: 'servicos', label: 'Serviços e preços', icon: 'tag' },
-  { section: 'biblioteca', label: 'Biblioteca', icon: 'library' },
-  { section: 'agentes', label: 'Central de agentes', icon: 'agents' },
+  { group: 'Gestão', section: 'trafego', label: 'Tráfego pago', icon: 'megaphone' },
+  { group: 'Gestão', section: 'servicos', label: 'Serviços e preços', icon: 'tag' },
+  { group: 'Recursos', section: 'biblioteca', label: 'Biblioteca', icon: 'library' },
+  { group: 'Recursos', section: 'agentes', label: 'Central de agentes', icon: 'agents' },
 ];
 
 function brandBlock(): SafeHtml {
@@ -99,10 +105,11 @@ export function renderSidebar(activeSection: string): SafeHtml {
     </div>
 
     <nav class="nav" aria-label="Navegação principal">
-      ${NAV.filter((item) => !item.finance || allowed('finance:view')).map((item) => {
+      ${NAV.filter((item) => !item.finance || allowed('finance:view')).map((item, i, list) => {
         const count = item.count?.() ?? 0;
         const active = item.section === activeSection;
-        return html`
+        const groupTitle = item.group && item.group !== list[i - 1]?.group ? html`<span class="nav__group">${item.group}</span>` : '';
+        return html`${groupTitle}
           <a class="${cx('nav__item', active && 'is-active')}" href="#/${item.section}" ${active ? html`aria-current="page"` : ''} data-action="nav:close">
             ${icon(item.icon, 18)}
             <span class="nav__label">${item.label}</span>

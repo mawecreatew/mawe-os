@@ -324,3 +324,149 @@ export function usedCategories(data: AppData): string[] {
 export function currentMonth(today: ISODate): MonthKey {
   return monthKey(today);
 }
+
+// ---------------------------------------------------------------- Gráfico do Painel
+
+/** Períodos do gráfico de faturamento do Painel. */
+export type RevenuePeriod = '7d' | '30d' | 'mes' | '12m';
+
+export interface SeriesPoint {
+  /** Data (AAAA-MM-DD) ou mês (AAAA-MM) do ponto. */
+  key: string;
+  /** Recebido no ponto (entradas pagas, sem retiradas). */
+  revenue: number;
+  /** Despesas pagas no ponto (sem retiradas dos sócios). */
+  expenses: number;
+}
+
+export interface RevenueReport {
+  period: RevenuePeriod;
+  granularity: 'dia' | 'mes';
+  from: ISODate;
+  to: ISODate;
+  points: SeriesPoint[];
+  revenue: number;
+  expenses: number;
+  profit: number;
+  /** Faturamento do período anterior de mesmo tamanho (para comparação). */
+  previousRevenue: number;
+  /** Quantidade de recebimentos no período (para o ticket médio). */
+  payments: number;
+  /** Ainda a receber com vencimento no período. */
+  toReceive: number;
+}
+
+/** Intervalo [from, to] de um período terminando em `today`. */
+export function periodRange(period: RevenuePeriod, today: ISODate): { from: ISODate; to: ISODate } {
+  switch (period) {
+    case '7d':
+      return { from: addDays(today, -6), to: today };
+    case '30d':
+      return { from: addDays(today, -29), to: today };
+    case 'mes':
+      // Até hoje: os dias que ainda não chegaram não entram no gráfico.
+      return { from: `${monthKey(today)}-01`, to: today };
+    case '12m':
+      return { from: `${monthKey(addMonths(today, -11, 1))}-01`, to: today };
+  }
+}
+
+function lastDay(month: MonthKey): ISODate {
+  const [y, m] = month.split('-').map(Number);
+  return `${month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`;
+}
+
+/** Período imediatamente anterior, com o mesmo número de dias/meses. */
+function previousRange(period: RevenuePeriod, from: ISODate, to: ISODate): { from: ISODate; to: ISODate } {
+  if (period === 'mes') {
+    // Mesmo trecho do mês passado (do dia 1 até o mesmo dia), para comparar de forma justa.
+    const prev = monthKey(addMonths(from, -1, 1));
+    const day = Math.min(Number(to.slice(8, 10)), Number(lastDay(prev).slice(8, 10)));
+    return { from: `${prev}-01`, to: `${prev}-${String(day).padStart(2, '0')}` };
+  }
+  if (period === '12m') return { from: addMonths(from, -12, 1), to: addMonths(to, -12) };
+  const days = diffInDays(from, to) + 1;
+  return { from: addDays(from, -days), to: addDays(from, -1) };
+}
+
+/**
+ * Faturamento e despesas pagos ao longo de um período, ponto a ponto
+ * (por dia, ou por mês no período de 12 meses). Só conta o que foi
+ * efetivamente pago/recebido, pela data do pagamento.
+ */
+export function revenueReport(data: AppData, period: RevenuePeriod, today: ISODate): RevenueReport {
+  const { from, to } = periodRange(period, today);
+  const granularity = period === '12m' ? 'mes' : 'dia';
+  const points: SeriesPoint[] = [];
+  const index = new Map<string, SeriesPoint>();
+  if (granularity === 'dia') {
+    for (let d = from; d <= to; d = addDays(d, 1)) {
+      const p = { key: d, revenue: 0, expenses: 0 };
+      points.push(p);
+      index.set(d, p);
+    }
+  } else {
+    for (let m = monthKey(from); m <= monthKey(to); m = monthKey(addMonths(`${m}-01`, 1, 1))) {
+      const p = { key: m, revenue: 0, expenses: 0 };
+      points.push(p);
+      index.set(m, p);
+    }
+  }
+
+  let payments = 0;
+  let toReceive = 0;
+  for (const m of financeMovements(data, from, to)) {
+    if (isWithdrawal(m)) continue;
+    if (!m.paidAt) {
+      if (m.kind === 'entrada') toReceive += m.amount;
+      continue;
+    }
+    const point = index.get(granularity === 'dia' ? m.paidAt : m.paidAt.slice(0, 7));
+    if (!point) continue;
+    if (m.kind === 'entrada') {
+      point.revenue += m.amount;
+      payments++;
+    } else {
+      point.expenses += m.amount;
+    }
+  }
+
+  const prev = previousRange(period, from, to);
+  const previousRevenue = financeMovements(data, prev.from, prev.to)
+    .filter((m) => m.kind === 'entrada' && m.paidAt && !isWithdrawal(m))
+    .reduce((sum, m) => sum + m.amount, 0);
+
+  const revenue = points.reduce((s, p) => s + p.revenue, 0);
+  const expenses = points.reduce((s, p) => s + p.expenses, 0);
+  return { period, granularity, from, to, points, revenue, expenses, profit: revenue - expenses, previousRevenue, payments, toReceive };
+}
+
+/** Variação percentual entre dois valores (null quando não há base de comparação). */
+export function percentChange(current: number, previous: number): number | null {
+  if (previous <= 0) return current > 0 ? null : 0;
+  return ((current - previous) / previous) * 100;
+}
+
+/**
+ * Receita recorrente mensal (planos mensais ativos): para cada plano, usa o
+ * mês mais recente até `month` (aceita o mês anterior, caso o deste mês
+ * ainda não tenha sido criado) e soma o valor do plano.
+ */
+export function monthlyRecurringRevenue(data: AppData, month: MonthKey): { total: number; plans: number } {
+  const prevMonth = monthKey(addMonths(`${month}-01`, -1, 1));
+  const latest = new Map<string, AppData['projects'][number]>();
+  for (const p of data.projects) {
+    if (p.type !== 'plano_mensal' || !p.period || p.period > month) continue;
+    const key = p.seriesId ?? p.id;
+    const current = latest.get(key);
+    if (!current || (current.period ?? '') < p.period) latest.set(key, p);
+  }
+  let total = 0;
+  let plans = 0;
+  for (const p of latest.values()) {
+    if ((p.period ?? '') < prevMonth || p.status === 'pausado') continue;
+    total += p.extra.amount ?? 0;
+    plans++;
+  }
+  return { total, plans };
+}

@@ -175,6 +175,15 @@ export function deleteOpportunity(draft: AppData, id: ID): void {
   for (const t of draft.tasks) if (t.related?.type === 'opportunity' && t.related.id === id) t.related = null;
 }
 
+/** Exclui várias oportunidades de uma vez (ex.: leads que não vale a pena contatar). Devolve quantas saíram. */
+export function deleteOpportunities(draft: AppData, ids: readonly ID[]): number {
+  const remove = new Set(ids);
+  const before = draft.opportunities.length;
+  draft.opportunities = draft.opportunities.filter((o) => !remove.has(o.id));
+  for (const t of draft.tasks) if (t.related?.type === 'opportunity' && remove.has(t.related.id)) t.related = null;
+  return before - draft.opportunities.length;
+}
+
 /** Cria um cliente a partir de uma oportunidade ganha e liga os dois registros. */
 export function convertOpportunityToClient(draft: AppData, id: ID, ctx: ActionContext): Client {
   const opp = mustFind(draft.opportunities, id, 'Oportunidade');

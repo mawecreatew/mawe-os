@@ -1,7 +1,7 @@
 /** Comercial: funil por etapas, lista e detalhe das oportunidades. */
 import { formatShortDate, formatTimestamp } from '../core/dates.ts';
 import { registerActions, registerForms } from '../core/events.ts';
-import { formatCurrency, parseMoney, pluralize } from '../core/format.ts';
+import { formatCurrency, normalizeText, parseMoney, pluralize } from '../core/format.ts';
 import { cx, html, multiline, type SafeHtml } from '../core/html.ts';
 import { navigate, type Route } from '../core/router.ts';
 import { opportunityBriefing } from '../agents/context.ts';
@@ -16,6 +16,7 @@ import {
   convertOpportunityToClient,
   createOpportunity,
   deleteOpportunity,
+  deleteOpportunities,
   moveOpportunity,
   updateOpportunity,
   type OpportunityInput,
@@ -34,10 +35,44 @@ import { setAgentDraft } from './agents.ts';
 import { commercialTabs, openProposalForm, proposalsOfOpportunity, renderProposalDetail, renderProposals } from './proposals.ts';
 import { findProposal } from './proposals.ts';
 
-const ui = { mode: 'funil' as 'funil' | 'lista', owner: 'todos' };
+const ui = {
+  mode: 'funil' as 'funil' | 'lista',
+  owner: 'todos',
+  search: '',
+  /** Modo de seleção: permite excluir ou mover várias oportunidades de uma vez. */
+  selecting: false,
+  selected: new Set<string>(),
+};
 
 function visibleOpportunities(list: Opportunity[]): Opportunity[] {
-  return ui.owner === 'todos' ? list : list.filter((o) => o.ownerIds.includes(ui.owner));
+  let result = ui.owner === 'todos' ? list : list.filter((o) => o.ownerIds.includes(ui.owner));
+  const term = normalizeText(ui.search.trim());
+  if (term) {
+    result = result.filter((o) => normalizeText([o.company, o.contactName, o.segment, o.source, o.contact.instagram ?? '', o.contact.phone ?? ''].join(' ')).includes(term));
+  }
+  return result;
+}
+
+function stopSelecting(): void {
+  ui.selecting = false;
+  ui.selected.clear();
+}
+
+async function deleteSelected(ids: string[]): Promise<void> {
+  if (!ids.length) return;
+  requirePermission('commercial:edit');
+  const names = ids.map((id) => findOpportunity(store().data, id)?.company).filter(Boolean) as string[];
+  const preview = names.slice(0, 4).join(', ') + (names.length > 4 ? ` e mais ${names.length - 4}` : '');
+  const ok = await confirmAction({
+    title: ids.length === 1 ? 'Excluir oportunidade' : `Excluir ${ids.length} oportunidades`,
+    text: `${preview}. Elas saem do funil de vez. Tarefas ligadas a elas continuam, só sem o vínculo.`,
+    confirmLabel: 'Excluir',
+  });
+  if (!ok) return;
+  const removed = await store().apply((draft) => deleteOpportunities(draft, ids));
+  stopSelecting();
+  rerender();
+  toast(removed === 1 ? 'Oportunidade excluída.' : `${removed} oportunidades excluídas.`);
 }
 
 // ---------------------------------------------------------------- Formulário
@@ -202,6 +237,53 @@ registerActions({
     setAgentDraft('comercial', opportunityBriefing(store().data, opp, allowed('finance:view')));
     navigate('/agentes/comercial');
   },
+  'opportunity:quick-delete': (el) => deleteSelected([el.dataset.id!]),
+  'commercial:select': () => {
+    if (ui.selecting) stopSelecting();
+    else ui.selecting = true;
+    rerender();
+  },
+  'opportunity:pick': (el) => {
+    const id = el.dataset.id!;
+    if (ui.selected.has(id)) ui.selected.delete(id);
+    else ui.selected.add(id);
+    rerender();
+  },
+  'commercial:pick-stage': (el) => {
+    const ids = visibleOpportunities(store().data.opportunities).filter((o) => o.stage === el.dataset.stage).map((o) => o.id);
+    const allPicked = ids.every((id) => ui.selected.has(id));
+    for (const id of ids) {
+      if (allPicked) ui.selected.delete(id);
+      else ui.selected.add(id);
+    }
+    rerender();
+  },
+  'commercial:pick-all': () => {
+    const ids = visibleOpportunities(store().data.opportunities).map((o) => o.id);
+    const allPicked = ids.length > 0 && ids.every((id) => ui.selected.has(id));
+    ui.selected.clear();
+    if (!allPicked) ids.forEach((id) => ui.selected.add(id));
+    rerender();
+  },
+  'commercial:bulk-delete': () => deleteSelected([...ui.selected]),
+  'commercial:bulk-move': async (el) => {
+    const stage = (el as HTMLSelectElement).value as OpportunityStage;
+    if (!stage || !ui.selected.size) return;
+    requirePermission('commercial:edit');
+    const ids = [...ui.selected];
+    await store().apply((draft, ctx) => ids.forEach((id) => moveOpportunity(draft, id, stage, ctx)));
+    stopSelecting();
+    rerender();
+    toast(`${pluralize(ids.length, 'oportunidade movida', 'oportunidades movidas')} para "${stageLabel(store().data, stage)}".`);
+  },
+  'commercial:search': (el) => {
+    ui.search = (el as HTMLInputElement).value;
+    rerender();
+  },
+  'commercial:clear-search': () => {
+    ui.search = '';
+    rerender();
+  },
   'commercial:mode': (el) => {
     ui.mode = el.dataset.value as typeof ui.mode;
     rerender();
@@ -254,18 +336,32 @@ function opportunityCard(opp: Opportunity): SafeHtml {
   const t = today();
   const finance = allowed('finance:view');
   const open = isOpenStage(opp.stage);
+  const content = html`
+    <span class="opp-card__head">
+      <span class="opp-card__company">${opp.company}</span>
+      ${avatarStack(data, opp.ownerIds)}
+    </span>
+    <span class="opp-card__sub">${[opp.segment, opp.source].filter(Boolean).join(' · ')} ${demoTag(opp)}</span>
+    ${finance && opp.estimatedValue !== null ? html`<span class="opp-card__value">${formatCurrency(opp.estimatedValue)}</span>` : ''}
+    ${open && opp.nextAction ? html`<span class="opp-card__next">${icon('arrowRight', 13)} ${opp.nextAction}</span>` : ''}
+    ${open && opp.followUpDate ? dueDate(opp.followUpDate, t) : ''}`;
+
+  if (ui.selecting) {
+    const picked = ui.selected.has(opp.id);
+    return html`
+      <article class="${cx('opp-card', 'opp-card--pick', picked && 'is-picked')}">
+        <button type="button" class="opp-card__link" data-action="opportunity:pick" data-id="${opp.id}" aria-pressed="${picked ? 'true' : 'false'}">
+          <span class="opp-card__check" aria-hidden="true">${picked ? icon('check', 12) : ''}</span>
+          ${content}
+        </button>
+      </article>`;
+  }
   return html`
     <article class="opp-card" draggable="true" data-drag-opportunity="${opp.id}">
-      <a class="opp-card__link" href="#/comercial/${opp.id}">
-        <span class="opp-card__head">
-          <span class="opp-card__company">${opp.company}</span>
-          ${avatarStack(data, opp.ownerIds)}
-        </span>
-        <span class="opp-card__sub">${[opp.segment, opp.source].filter(Boolean).join(' · ')} ${demoTag(opp)}</span>
-        ${finance && opp.estimatedValue !== null ? html`<span class="opp-card__value">${formatCurrency(opp.estimatedValue)}</span>` : ''}
-        ${open && opp.nextAction ? html`<span class="opp-card__next">${icon('arrowRight', 13)} ${opp.nextAction}</span>` : ''}
-        ${open && opp.followUpDate ? dueDate(opp.followUpDate, t) : ''}
-      </a>
+      <a class="opp-card__link" href="#/comercial/${opp.id}">${content}</a>
+      ${allowed('commercial:edit')
+        ? html`<button type="button" class="opp-card__delete" data-action="opportunity:quick-delete" data-id="${opp.id}" title="Excluir" aria-label="Excluir ${opp.company}">${icon('trash', 14)}</button>`
+        : ''}
     </article>
   `;
 }
@@ -281,13 +377,16 @@ function renderBoard(list: Opportunity[]): SafeHtml {
           <section class="${cx('board__column', `board__column--${stage.tone}`)}" data-drop-stage="${stage.id}" aria-label="${stage.label}">
             <header class="board__header">
               <span class="board__title">${stage.label}</span>
+              ${ui.selecting && items.length
+                ? html`<button type="button" class="board__pick" data-action="commercial:pick-stage" data-stage="${stage.id}">${items.every((o) => ui.selected.has(o.id)) ? 'Desmarcar' : 'Marcar todas'}</button>`
+                : ''}
               <span class="board__count">${items.length}</span>
             </header>
             ${finance && total ? html`<p class="board__total">${formatCurrency(total)}</p>` : ''}
             <div class="board__cards">
               ${items.length ? items.map(opportunityCard) : html`<p class="board__empty">Arraste uma oportunidade para cá</p>`}
             </div>
-            ${isOpenStage(stage.id)
+            ${isOpenStage(stage.id) && !ui.selecting
               ? html`<button type="button" class="board__add" data-action="opportunity:new" data-stage="${stage.id}">${icon('plus', 14)} Adicionar</button>`
               : ''}
           </section>`;
@@ -302,25 +401,50 @@ function renderList(list: Opportunity[]): SafeHtml {
   const finance = allowed('finance:view');
   const order = pipelineStages(data).map((s) => s.id);
   const sorted = [...list].sort((a, b) => order.indexOf(a.stage) - order.indexOf(b.stage));
+  const edit = allowed('commercial:edit');
   return html`
     <div class="table-wrap">
       <table class="table">
-        <thead><tr><th>Empresa</th><th>Etapa</th><th>Responsável</th>${finance ? html`<th class="num">Valor</th>` : ''}<th>Próxima ação</th><th>Acompanhamento</th></tr></thead>
+        <thead><tr>${ui.selecting ? html`<th class="cell-pick"><span class="visually-hidden">Selecionar</span></th>` : ''}<th>Empresa</th><th>Etapa</th><th>Responsável</th>${finance ? html`<th class="num">Valor</th>` : ''}<th>Próxima ação</th><th>Acompanhamento</th>${ui.selecting || !edit ? '' : html`<th class="cell-actions"><span class="visually-hidden">Ações</span></th>`}</tr></thead>
         <tbody>
           ${sorted.map(
-            (o) => html`<tr>
-              <td class="cell-main"><a href="#/comercial/${o.id}">${o.company}</a> ${demoTag(o)}<span class="cell-sub">${o.contactName} · ${o.segment}</span></td>
+            (o) => html`<tr class="${cx(ui.selected.has(o.id) && 'is-picked')}">
+              ${ui.selecting
+                ? html`<td class="cell-pick"><input type="checkbox" class="check" data-change="opportunity:pick" data-id="${o.id}" ${ui.selected.has(o.id) ? 'checked' : ''} aria-label="Selecionar ${o.company}" /></td>`
+                : ''}
+              <td class="cell-main"><a href="#/comercial/${o.id}">${o.company}</a> ${demoTag(o)}<span class="cell-sub">${[o.contactName, o.segment].filter(Boolean).join(' · ')}</span></td>
               <td data-label="Etapa">${badge(stageLabel(data, o.stage), stageTone(data, o.stage))}</td>
               <td data-label="Responsável">${people(data, o.ownerIds)}</td>
               ${finance ? html`<td data-label="Valor" class="num">${o.estimatedValue === null ? html`<span class="muted">—</span>` : formatCurrency(o.estimatedValue)}</td>` : ''}
               <td data-label="Próxima ação">${o.nextAction || html`<span class="muted">—</span>`}</td>
               <td data-label="Acompanhamento">${isOpenStage(o.stage) ? dueDate(o.followUpDate, t) : html`<span class="muted">—</span>`}</td>
+              ${ui.selecting || !edit
+                ? ''
+                : html`<td class="cell-actions"><button type="button" class="btn btn--ghost btn--icon btn--sm" data-action="opportunity:quick-delete" data-id="${o.id}" title="Excluir" aria-label="Excluir ${o.company}">${icon('trash', 15)}</button></td>`}
             </tr>`,
           )}
         </tbody>
       </table>
     </div>
   `;
+}
+
+function renderSelectionBar(list: Opportunity[]): SafeHtml {
+  const { data } = store();
+  const count = ui.selected.size;
+  const allPicked = list.length > 0 && list.every((o) => ui.selected.has(o.id));
+  return html`
+    <div class="bulk-bar" role="region" aria-label="Ações para as oportunidades selecionadas">
+      <span class="bulk-bar__count"><strong>${String(count)}</strong> ${count === 1 ? 'selecionada' : 'selecionadas'}</span>
+      <button type="button" class="btn btn--ghost btn--sm" data-action="commercial:pick-all">${allPicked ? 'Desmarcar todas' : `Marcar todas (${list.length})`}</button>
+      <span class="bulk-bar__spacer"></span>
+      <label class="visually-hidden" for="bulk-move">Mover selecionadas para</label>
+      <select id="bulk-move" class="input select bulk-bar__move" data-change="commercial:bulk-move" ${count ? '' : 'disabled'}>
+        <option value="">Mover para…</option>
+        ${pipelineStages(data).map((st) => html`<option value="${st.id}">${st.label}</option>`)}
+      </select>
+      <button type="button" class="btn btn--danger btn--sm" data-action="commercial:bulk-delete" ${count ? '' : 'disabled'}>${icon('trash', 15)}<span>Excluir</span></button>
+    </div>`;
 }
 
 function renderOverview(): SafeHtml {
@@ -348,7 +472,15 @@ function renderOverview(): SafeHtml {
     <div class="toolbar">
       ${segmented({ label: 'Visualização', action: 'commercial:mode', value: ui.mode, items: [{ value: 'funil', label: 'Funil', icon: 'kanban' }, { value: 'lista', label: 'Lista', icon: 'list' }] })}
       ${segmented({ label: 'Responsável', action: 'commercial:owner', value: ui.owner, items: [{ value: 'todos', label: 'Todos' }, ...data.users.map((u) => ({ value: u.id, label: u.shortName }))] })}
+      <label class="search">
+        <span class="visually-hidden">Buscar oportunidades</span>
+        <input id="commercial-search" class="input" type="search" placeholder="Buscar empresa, contato ou segmento" value="${ui.search}" data-input="commercial:search" />
+      </label>
+      ${allowed('commercial:edit') && data.opportunities.length
+        ? button({ label: ui.selecting ? 'Cancelar seleção' : 'Selecionar várias', action: 'commercial:select', icon: ui.selecting ? 'close' : 'check', variant: ui.selecting ? 'secondary' : 'ghost' })
+        : ''}
     </div>
+    ${ui.selecting ? renderSelectionBar(list) : ''}
 
     ${data.opportunities.length === 0
       ? html`<div class="panel">${emptyState({

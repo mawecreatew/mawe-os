@@ -58,6 +58,12 @@
   --cal-6-bg: #f2e8d5; --cal-6-fg: #7a5a28;
   --cal-7-bg: #e1ece9; --cal-7-fg: #335c56;
 
+  /* Gráficos do Painel */
+  --chart-line: var(--brown-800);
+  --chart-fill: var(--gold-500);
+  --chart-expense: #c0786a;
+  --chart-grid: #ebe2d4;
+
   /* Tipografia */
   --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, "URW Palladio L", "Book Antiqua", Georgia, serif;
   --font-body: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
