@@ -34,7 +34,7 @@ writeFileSync('test-results/config.json', JSON.stringify({ supabaseUrl: `http://
 const fakeSupabase = await startFakeSupabase(SUPA_PORT);
 const loginServer = await startAppServer(LOGIN_PORT, { MAWE_CONFIG_PATH: 'test-results/config.json' });
 
-const browser = await chromium.launch();
+const browser = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {});
 const context = await browser.newContext({ viewport: { width: 1366, height: 900 }, locale: 'pt-BR' });
 const page = await context.newPage();
 const errors = [];
@@ -86,7 +86,19 @@ try {
     await go('#/painel');
     await expectTitle(/^(Bom dia|Boa tarde|Boa noite), Maria Eduarda\.$/);
     assert.match(await page.locator('.env-banner').innerText(), /Protótipo local/);
-    assert.ok((await page.locator('.task-row').count()) > 0);
+    assert.ok((await page.locator('.focus__item').count()) > 0, 'Foco de hoje deveria listar itens');
+    await page.locator('.rev-chart svg').waitFor();
+    await page.locator('.funnel__step').first().waitFor();
+  });
+
+  await step('painel: troca o período do gráfico e mostra o valor ao passar o mouse', async () => {
+    await go('#/painel');
+    await page.locator('.finance-hero .segmented__item', { hasText: '12 meses' }).click();
+    assert.equal(await page.locator('.finance-hero .segmented__item.is-active').innerText(), '12 meses');
+    await page.locator('.rev-chart__x span').first().waitFor();
+    await page.locator('[data-chart-plot]').hover();
+    assert.match(await page.locator('.rev-chart__tip').innerText(), /Faturamento: R\$/);
+    await page.locator('.finance-hero .segmented__item', { hasText: '30 dias' }).click();
   });
 
   await step('navega por todas as áreas pelo menu lateral', async () => {
@@ -94,7 +106,7 @@ try {
       Comercial: 'Comercial',
       Clientes: 'Clientes',
       Projetos: 'Projetos',
-      Calendário: 'Calendário de conteúdo',
+      'Calendário de conteúdo': 'Calendário de conteúdo',
       Tarefas: 'Tarefas',
       Financeiro: 'Financeiro',
       'Tráfego pago': 'Tráfego pago',
@@ -438,7 +450,34 @@ try {
     const goals = page.locator('.goals-panel');
     await goals.locator('.goal', { hasText: 'Faturamento do mês' }).locator('small', { hasText: 'de R$ 5.000' }).waitFor();
     await goals.locator('.goal__sources', { hasText: 'Google Maps' }).waitFor();
-    await page.locator('.panel', { hasText: 'Contas a pagar e a receber' }).waitFor();
+    await page.locator('.focus-panel .focus__tag', { hasText: 'Financeiro' }).first().waitFor();
+  });
+
+  await step('comercial: exclui uma oportunidade pelo card e várias de uma vez', async () => {
+    await go('#/comercial');
+    const before = await page.locator('.opp-card').count();
+    const first = page.locator('.opp-card').first();
+    const name = await first.locator('.opp-card__company').innerText();
+    await first.hover();
+    await first.locator('.opp-card__delete').click();
+    await modal().getByRole('button', { name: 'Excluir' }).click();
+    await page.locator('.toast', { hasText: 'Oportunidade excluída' }).waitFor();
+    assert.equal(await page.locator('.opp-card__company', { hasText: name }).count(), 0);
+    assert.equal(await page.locator('.opp-card').count(), before - 1);
+
+    await page.getByRole('button', { name: 'Selecionar várias' }).click();
+    await page.locator('.opp-card--pick button').nth(0).click();
+    await page.locator('.opp-card--pick button').nth(1).click();
+    assert.match(await page.locator('.bulk-bar__count').innerText(), /^2 selecionadas/);
+    await page.locator('.bulk-bar').getByRole('button', { name: 'Excluir' }).click();
+    await modal().getByRole('button', { name: 'Excluir' }).click();
+    await page.locator('.toast', { hasText: '2 oportunidades excluídas' }).waitFor();
+    assert.equal(await page.locator('.opp-card').count(), before - 3);
+    assert.equal(await page.locator('.bulk-bar').count(), 0, 'modo de seleção deveria fechar');
+
+    await page.locator('#commercial-search').fill('zzz-nada');
+    assert.equal(await page.locator('.opp-card').count(), 0);
+    await page.locator('#commercial-search').fill('');
   });
 
   await step('biblioteca: abre modelo, alterna categorias e mostra decisões', async () => {

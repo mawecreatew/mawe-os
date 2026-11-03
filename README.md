@@ -3,7 +3,7 @@
 Escritório digital privado da **Mawe Create** — operação diária, comercial, clientes,
 projetos, tarefas, biblioteca e agentes de IA, compartilhado por Maria Eduarda e Wesley.
 
-> **Status: v0.4.** Funciona de verdade no navegador. Tem dois modos:
+> **Status: v0.5.** Funciona de verdade no navegador. Tem dois modos:
 > - **Protótipo local** (padrão): sem login, com dados **fictícios** salvos só neste navegador.
 > - **Com login (Supabase)**: cada sócio entra com sua conta e os dois veem os mesmos dados.
 >   Para ativar, siga [`docs/SUPABASE.md`](docs/SUPABASE.md).
@@ -41,12 +41,19 @@ O teste de navegação usa o Playwright. Se for a primeira vez na sua máquina, 
 
 ## O que já funciona
 
-- **Painel**: saudação pelo horário, **metas do mês** (faturamento, clientes novos,
-  contatos de prospecção por origem, propostas enviadas e aceitas), prioridades do dia,
-  atrasadas, próximos prazos, **contas a pagar e a receber**, resumo comercial e projetos.
+- **Painel (gestão)**: **gráfico de faturamento** por período (7 dias, 30 dias, este mês,
+  12 meses) com comparação ao período anterior, ticket médio e valor de cada dia ao passar o
+  mouse; ao lado, lucro, despesas, a receber nos próximos 30 dias e receita recorrente dos
+  planos mensais. **Foco de hoje** junta retornos comerciais, tarefas, contas e entregas
+  vencidas ou do dia numa lista só (dá para concluir tarefas e marcar contas ali mesmo).
+  **Funil de vendas** mostra a conversão de cada etapa e aponta onde vocês mais perdem
+  clientes, com uma sugestão do que fazer. Depois, metas do mês e projetos em andamento.
+- **Menu** agrupado pelo caminho do dinheiro: Vender, Entregar, Gestão e Recursos.
 - **Comercial**: funil com **etapas configuráveis** pelos sócios (renomear, adicionar,
   remover movendo as oportunidades, reordenar; "Ganho" e "Perdido" fixos no fim), arrastar e
   soltar, lista, histórico, marcação de "contato feito" e "respondeu", conversão em cliente.
+  **Excluir direto do card** (ícone de lixeira), **busca** por empresa/contato/segmento e
+  **seleção de várias** oportunidades para excluir ou mover de etapa de uma vez.
 - **Comercial › Propostas e contratos**: proposta com serviços do catálogo e total
   automático, status (rascunho → enviada → aceita/recusada), link do contrato assinado,
   início e forma de pagamento; ao aceitar, cria cliente, projetos e parcelas.

@@ -75,7 +75,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: 9px var(--space-3);
+  padding: 7px var(--space-3);
   border-radius: var(--radius-sm);
   color: var(--text-on-dark-2);
   text-decoration: none;
@@ -107,6 +107,18 @@
 .nav__item .icon { flex: none; opacity: 0.9; }
 
 .nav__label { flex: 1; }
+
+.nav__group {
+  display: block;
+  margin: var(--space-4) 0 var(--space-1);
+  padding: 0 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-on-dark-2);
+  opacity: 0.7;
+}
 
 .nav__count {
   min-width: 20px;
