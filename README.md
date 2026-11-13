@@ -3,7 +3,7 @@
 Escritório digital privado da **Mawe Create** — operação diária, comercial, clientes,
 projetos, tarefas, biblioteca e agentes de IA, compartilhado por Maria Eduarda e Wesley.
 
-> **Status: v0.5.** Funciona de verdade no navegador. Tem dois modos:
+> **Status: v0.6.** Funciona de verdade no navegador. Tem dois modos:
 > - **Protótipo local** (padrão): sem login, com dados **fictícios** salvos só neste navegador.
 > - **Com login (Supabase)**: cada sócio entra com sua conta e os dois veem os mesmos dados.
 >   Para ativar, siga [`docs/SUPABASE.md`](docs/SUPABASE.md).
@@ -49,7 +49,15 @@ O teste de navegação usa o Playwright. Se for a primeira vez na sua máquina, 
   **Funil de vendas** mostra a conversão de cada etapa e aponta onde vocês mais perdem
   clientes, com uma sugestão do que fazer. Depois, metas do mês e projetos em andamento.
 - **Menu** agrupado pelo caminho do dinheiro: Vender, Entregar, Gestão e Recursos.
-- **Comercial**: funil com **etapas configuráveis** pelos sócios (renomear, adicionar,
+- **Comercial (v0.6)**: cada etapa diz **de quem é a vez** (nossa vez, vez do cliente ou pausado).
+  Só fica pendente o que depende de vocês; quem espera o cliente mostra "aguardando há X dias" e,
+  se a etapa pedir, "hora do follow-up" depois de N dias (para depois de 3 tentativas sem resposta).
+  Números do topo com período: para agir hoje, leads ativos, aguardando cliente, mensagens
+  enviadas, taxa de resposta e fechados, mais a **meta diária de contatos**. Cada lead tem
+  **registro de contatos** (WhatsApp, ligação, resposta), **WhatsApp com mensagem pronta** da
+  Biblioteca (registra o contato sozinho) e **motivo de perda** ao ir para a etapa final de perda.
+  Aba **Relatórios**: contatos por semana, por que não fecham, origem e nicho que mais convertem.
+- **Comercial (base)**: funil com **etapas configuráveis** pelos sócios (renomear, adicionar,
   remover movendo as oportunidades, reordenar; "Ganho" e "Perdido" fixos no fim), arrastar e
   soltar, lista, histórico, marcação de "contato feito" e "respondeu", conversão em cliente.
   **Excluir direto do card** (ícone de lixeira), **busca** por empresa/contato/segmento e
@@ -64,10 +72,20 @@ O teste de navegação usa o Playwright. Se for a primeira vez na sua máquina, 
   próximo mês"; filtro por tipo; excluir com confirmação; decisões e tarefas do projeto.
 - **Calendário de conteúdo**: posts, carrosséis, stories e reels dos clientes e da
   MaweCreate, por mês ou semana, com cores por cliente ou status e ligação com os projetos.
-- **Financeiro**: entradas e saídas, parcelas de clientes automáticas, despesas recorrentes
+- **Financeiro (v0.6)**: **caixa atual** somando todos os meses (com saldo inicial opcional),
+  filtro de período (mês, 7/30 dias, 12 meses, desde o início), aba **Mês a mês** com caixa
+  acumulado, **reservas** (caixinhas) e cobranças automáticas dos **planos mensais** dos clientes.
+- **Financeiro (base)**: entradas e saídas, parcelas de clientes automáticas, despesas recorrentes
   (mensais/anuais) geradas sozinhas, quem pagou do próprio bolso, resumo e filtros.
 - **Tráfego pago**: campanhas, resultados anotados à mão, custo por resultado e aprendizados.
-- **Serviços e preços**: catálogo único (com a tabela de preços inicial), ativar/desativar.
+- **Serviços e preços**: catálogo único com categorias editáveis, **preço promocional com
+  validade** (volta sozinho ao normal) e **pacotes** que mostram a economia.
+- **Clientes › ficha completa**: quanto já pagou, planos mensais (cobrança de cada mês, lembrete
+  no WhatsApp), acessos e links, domínio com aviso de renovação.
+- **Categorias**: listas editáveis (serviços, despesas, entradas, origem, nichos, motivos de perda).
+- **Equipe**: papel de cada pessoa, números por pessoa e atividade recente (quem fez o quê).
+- **Busca rápida**: `Ctrl + K` ou o botão "Buscar" do menu encontram leads, clientes, projetos,
+  tarefas, serviços, propostas e modelos.
 - **Tarefas**: criar, editar, concluir, excluir; responsável, prioridade, prazo,
   situação e vínculo com projeto/oportunidade/cliente; filtros e busca.
 - **Biblioteca**: mensagens, propostas, checklists, processos e registro de decisões.

@@ -60,8 +60,8 @@ export const STARTER_SERVICES: Service[] = [
   { id: 'svc_hotsite', name: 'Hotsite', category: 'site', includes: 'Site para campanha ou evento\nAté 2 rodadas de alterações', price: 700, billing: 'unico', deliveryDays: 10, active: true },
   { id: 'svc_portfolio', name: 'Site portfólio', category: 'site', includes: 'Galeria de trabalhos e apresentação profissional\nAté 2 rodadas de alterações', price: 800, billing: 'unico', deliveryDays: 10, active: true },
   { id: 'svc_institucional', name: 'Site institucional', category: 'site', includes: 'Várias páginas (início, sobre, serviços, contato)\nAté 2 rodadas de alterações', price: 900, billing: 'unico', deliveryDays: 12, active: true },
-  { id: 'svc_essencial', name: 'Plano Essencial', category: 'plano_mensal', includes: 'Pequenas alterações\nSuporte básico', price: 49, billing: 'mensal', deliveryDays: null, active: true },
+  { id: 'svc_essencial', name: 'Plano Essencial', category: 'plano_mensal', includes: 'Pequenas alterações\nSuporte básico', price: 49.99, billing: 'mensal', deliveryDays: null, active: true },
   { id: 'svc_profissional', name: 'Plano Profissional', category: 'plano_mensal', includes: 'Alterações recorrentes\nAtualizações\nSuporte prioritário', price: 99, billing: 'mensal', deliveryDays: null, active: true },
   { id: 'svc_avancado', name: 'Plano Avançado', category: 'plano_mensal', includes: 'Manutenção contínua\nAlterações frequentes\nAcompanhamento', price: 179, billing: 'mensal', deliveryDays: null, active: true },
-  { id: 'svc_dominio', name: 'Cadastro de domínio', category: 'outro', includes: 'Registro do domínio em nome do cliente (a taxa anual do registro é paga pelo cliente)', price: 25, billing: 'unico', deliveryDays: 1, active: true },
+  { id: 'svc_dominio', name: 'Cadastro de domínio', category: 'outro', includes: 'A MaweCreate faz o registro do domínio no nome do cliente\nO domínio custa R$ 40 por ano no registro.br, pago pelo cliente à parte', price: 25, billing: 'unico', deliveryDays: 1, active: true },
 ];

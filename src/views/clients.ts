@@ -1,11 +1,18 @@
 /** Clientes: cadastro, projetos relacionados, contratação, parcelas e pendências. */
-import { formatShortDate } from '../core/dates.ts';
+import { formatShortDate, monthKey, monthLabel } from '../core/dates.ts';
+import { categoryNames } from '../domain/categories.ts';
+import { whatsappLink } from '../domain/commercial.ts';
+import { deleteSubscription, paySubscription, saveSubscription, subscriptionDates, toggleFinanceEntryPaid, type SubscriptionInput } from '../domain/finance.ts';
+import { externalLink } from '../ui/components.ts';
 import { registerActions, registerForms } from '../core/events.ts';
 import { formatCurrency, parseMoney, pluralize } from '../core/format.ts';
 import { cx, html, multiline, type SafeHtml } from '../core/html.ts';
 import { navigate, type Route } from '../core/router.ts';
 import { CONTRACT_STATUSES, PROJECT_STATUSES, PROPOSAL_STATUSES, labelOf, projectStatusLabel, toneOf } from '../domain/labels.ts';
 import {
+  addClientLink,
+  removeClientLink,
+  setClientDomain,
   addInstallment,
   addPendingItem,
   createClient,
@@ -38,7 +45,7 @@ function openClientForm(client?: Client): void {
         <div class="form-grid">
           ${textField({ name: 'company', label: 'Empresa', value: v.company, required: true, autofocus: true })}
           ${textField({ name: 'contactName', label: 'Contato principal', value: v.contactName })}
-          ${textField({ name: 'segment', label: 'Segmento', value: v.segment })}
+          ${textField({ name: 'segment', label: 'Nicho', value: v.segment, suggestions: categoryNames(store().data, 'segmento') })}
           ${textField({ name: 'city', label: 'Cidade', value: v.city })}
           ${textField({ name: 'email', label: 'E-mail', type: 'email', value: v.contact.email })}
           ${textField({ name: 'phone', label: 'Telefone / WhatsApp', type: 'tel', value: v.contact.phone })}
@@ -50,6 +57,61 @@ function openClientForm(client?: Client): void {
         ${formActions(client ? 'Salvar alterações' : 'Cadastrar cliente')}
       </form>
     `,
+  });
+}
+
+function openSubscriptionForm(clientId: string, subId?: string): void {
+  const { data } = store();
+  const client = findClient(data, clientId);
+  const sub = client?.subscriptions?.find((x) => x.id === subId);
+  const plans = data.services.filter((s) => s.billing === 'mensal' && (s.active || s.id === sub?.serviceId));
+  const first = plans[0];
+  const v: SubscriptionInput = sub ?? { name: first?.name ?? 'Plano mensal', serviceId: first?.id ?? null, amount: first?.price ?? 0, billingDay: Number(today().slice(8, 10)), startMonth: monthKey(today()), endMonth: null, active: true };
+  openModal({
+    title: sub ? 'Editar plano mensal' : 'Ativar plano mensal',
+    description: 'O sistema cria a cobrança de cada mês sozinho (aparece no Financeiro e no Foco de hoje). É só marcar quando o cliente pagar.',
+    body: html`
+      <form class="form" data-form="subscription:save" data-client="${clientId}" data-id="${sub?.id ?? ''}">
+        <div class="form-grid">
+          ${selectField({ name: 'serviceId', label: 'Plano do catálogo', value: v.serviceId ?? '', emptyLabel: 'Outro (digitar abaixo)', options: plans.map((p) => ({ value: p.id, label: `${p.name} · ${formatCurrency(p.price, true)}/mês` })) })}
+          ${textField({ name: 'name', label: 'Nome do plano', value: v.name, required: true })}
+          ${textField({ name: 'amount', label: 'Valor por mês (R$)', value: v.amount ? String(v.amount).replace('.', ',') : '', required: true, inputmode: 'decimal', hint: 'Se escolher um plano do catálogo e deixar o valor como está, usa o preço do catálogo.' })}
+          ${textField({ name: 'billingDay', label: 'Dia do vencimento', type: 'number', value: v.billingDay, required: true })}
+          ${textField({ name: 'startMonth', label: 'Primeiro mês cobrado', type: 'month', value: v.startMonth, required: true })}
+          ${textField({ name: 'endMonth', label: 'Último mês (opcional)', type: 'month', value: v.endMonth ?? '', hint: 'Deixe vazio enquanto o plano continuar.' })}
+          ${selectField({ name: 'active', label: 'Situação', value: v.active ? 'sim' : 'nao', options: [{ value: 'sim', label: 'Ativo' }, { value: 'nao', label: 'Pausado (não gera cobrança)' }] })}
+        </div>
+        ${formActions(sub ? 'Salvar plano' : 'Ativar plano', sub ? button({ label: 'Excluir plano', action: 'subscription:delete', variant: 'ghost', icon: 'trash', size: 'sm', data: { client: clientId, id: sub.id } }) : undefined)}
+      </form>`,
+  });
+}
+
+function openLinkForm(clientId: string): void {
+  openModal({
+    title: 'Adicionar link',
+    description: 'Site publicado, perfil do Google, pasta de artes, Canva... Nunca guarde senhas aqui.',
+    body: html`
+      <form class="form" data-form="client-link:save" data-client="${clientId}">
+        ${textField({ name: 'label', label: 'Nome', placeholder: 'Ex.: Google Meu Negócio', autofocus: true, suggestions: ['Site publicado', 'Google Meu Negócio', 'Instagram', 'Pasta de artes', 'Canva', 'Repositório (GitHub)', 'Hospedagem (Vercel/Lovable)', 'Contrato assinado'] })}
+        ${textField({ name: 'url', label: 'Endereço (link)', type: 'url', required: true, placeholder: 'https://' })}
+        ${formActions('Adicionar link')}
+      </form>`,
+  });
+}
+
+function openDomainForm(clientId: string): void {
+  const client = findClient(store().data, clientId);
+  openModal({
+    title: 'Domínio do cliente',
+    description: 'Avisamos no Foco de hoje 30 dias antes da renovação, para lembrar o cliente de pagar o registro.br.',
+    body: html`
+      <form class="form" data-form="client-domain:save" data-client="${clientId}">
+        <div class="form-grid">
+          ${textField({ name: 'name', label: 'Domínio', value: client?.domain?.name ?? '', placeholder: 'ex.: thehouse.com.br', autofocus: true })}
+          ${textField({ name: 'renewsOn', label: 'Renova em', type: 'date', value: client?.domain?.renewsOn ?? '' })}
+        </div>
+        ${formActions('Salvar')}
+      </form>`,
   });
 }
 
@@ -104,6 +166,37 @@ registerForms({
     closeModal();
     toast('Parcela registrada.');
   },
+  'subscription:save': async (form, values) => {
+    requirePermission('finance:edit');
+    const { data } = store();
+    const serviceId = values.optional('serviceId');
+    const service = data.services.find((s) => s.id === serviceId);
+    const amount = parseMoney(values.text('amount')) ?? service?.price ?? 0;
+    const input: SubscriptionInput = {
+      serviceId,
+      name: values.text('name') || service?.name || 'Plano mensal',
+      amount,
+      billingDay: Number(values.text('billingDay')),
+      startMonth: values.text('startMonth'),
+      endMonth: values.optional('endMonth'),
+      active: values.text('active') !== 'nao',
+    };
+    await store().apply((draft, ctx) => saveSubscription(draft, form.dataset.client!, form.dataset.id || null, input, ctx));
+    closeModal();
+    toast(form.dataset.id ? 'Plano atualizado.' : 'Plano ativado. A cobrança de cada mês aparece no Financeiro.');
+  },
+  'client-link:save': async (form, values) => {
+    requirePermission('commercial:edit');
+    await store().apply((draft) => addClientLink(draft, form.dataset.client!, values.text('label'), values.text('url')));
+    closeModal();
+    toast('Link adicionado.');
+  },
+  'client-domain:save': async (form, values) => {
+    requirePermission('commercial:edit');
+    await store().apply((draft) => setClientDomain(draft, form.dataset.client!, values.text('name'), values.optional('renewsOn')));
+    closeModal();
+    toast('Domínio salvo.');
+  },
   'pending:add': async (form, values) => {
     const text = values.text('text');
     if (!text) return;
@@ -120,6 +213,40 @@ registerActions({
   'client:new-project': (el) => openProjectForm(undefined, el.dataset.id),
   'client:new-proposal': (el) => openProposalForm(undefined, { clientId: el.dataset.id }),
   'installment:new': (el) => openInstallmentForm(el.dataset.client!),
+  'subscription:new': (el) => openSubscriptionForm(el.dataset.client!),
+  'subscription:edit': (el) => openSubscriptionForm(el.dataset.client!, el.dataset.id),
+  'subscription:delete': async (el) => {
+    requirePermission('finance:edit');
+    const ok = await confirmAction({ title: 'Excluir plano', text: 'As próximas cobranças deixam de ser criadas. Os pagamentos já registrados continuam no Financeiro.', confirmLabel: 'Excluir' });
+    if (!ok) return;
+    await store().apply((draft) => deleteSubscription(draft, el.dataset.client!, el.dataset.id!));
+    toast('Plano excluído.');
+  },
+  'subscription:pay': async (el) => {
+    requirePermission('finance:edit');
+    const entry = store().data.finance.entries.find((e) => e.subscriptionId === el.dataset.id && e.dueDate === el.dataset.date);
+    if (entry) await store().apply((draft) => toggleFinanceEntryPaid(draft, entry.id, today()));
+    else await store().apply((draft, ctx) => paySubscription(draft, el.dataset.client!, el.dataset.id!, el.dataset.date!, today(), ctx));
+  },
+  'subscription:charge': (el) => {
+    const client = findClient(store().data, el.dataset.client);
+    const sub = client?.subscriptions?.find((x) => x.id === el.dataset.id);
+    if (!client || !sub) return;
+    const first = client.contactName.split(' ')[0] || client.company;
+    const text = `Oi, ${first}! Tudo bem? Passando para lembrar da mensalidade do ${sub.name} (${formatCurrency(sub.amount, true)}) com vencimento em ${formatShortDate(el.dataset.date!)}. Pode ser pelo Pix de sempre. Qualquer dúvida, estou por aqui!`;
+    const link = whatsappLink(client.contact.phone, text);
+    if (!link) {
+      toast('Cadastre o WhatsApp do cliente (botão Editar) para mandar o lembrete.', 'info');
+      return;
+    }
+    window.open(link, '_blank', 'noopener');
+  },
+  'client-link:new': (el) => openLinkForm(el.dataset.client!),
+  'client-link:remove': async (el) => {
+    requirePermission('commercial:edit');
+    await store().apply((draft) => removeClientLink(draft, el.dataset.client!, el.dataset.id!));
+  },
+  'client-domain:edit': (el) => openDomainForm(el.dataset.client!),
   'installment:toggle': async (el) => {
     requirePermission('finance:edit');
     await store().apply((draft) => toggleInstallmentPaid(draft, el.dataset.client!, el.dataset.id!, today()));
@@ -175,6 +302,9 @@ function renderList(): SafeHtml {
                       ${f.overdueCount ? html`<span class="text-danger">${icon('alert', 13)} ${pluralize(f.overdueCount, 'parcela vencida', 'parcelas vencidas')}</span>` : ''}
                     </span>`
                   : ''}
+                ${finance && (c.subscriptions ?? []).some((s) => s.active)
+                  ? html`<span class="client-card__plan">${icon('repeat', 13)} ${(c.subscriptions ?? []).filter((s) => s.active).map((s) => `${s.name} · ${formatCurrency(s.amount, true)}/mês`).join(' + ')}</span>`
+                  : ''}
                 ${c.nextStep ? html`<span class="client-card__next">${icon('arrowRight', 13)} ${c.nextStep}</span>` : ''}
               </a>`;
           })}
@@ -228,6 +358,94 @@ function renderPayments(client: Client): SafeHtml {
   });
 }
 
+/** Quanto o cliente já pagou no total (parcelas + planos + entradas ligadas a ele). */
+function lifetimeValue(client: Client): number {
+  const { data } = store();
+  const installments = client.installments.filter((i) => i.paidAt).reduce((s, i) => s + i.amount, 0);
+  const entries = data.finance.entries.filter((e) => e.kind === 'entrada' && e.clientId === client.id && e.paidAt).reduce((s, e) => s + e.amount, 0);
+  return installments + entries;
+}
+
+function renderSummary(client: Client): SafeHtml {
+  if (!allowed('finance:view')) return html``;
+  const t = today();
+  const f = clientFinance(client, t);
+  const monthly = (client.subscriptions ?? []).filter((s) => s.active).reduce((sum, s) => sum + s.amount, 0);
+  return html`<div class="client-summary">
+    <div><span>Já pagou no total</span><strong class="text-success">${formatCurrency(lifetimeValue(client), true)}</strong></div>
+    <div><span>Plano mensal</span><strong>${monthly ? `${formatCurrency(monthly, true)}/mês` : '—'}</strong></div>
+    <div><span>Em aberto</span><strong class="${cx(f.overdue && 'text-danger')}">${formatCurrency(f.pending, true)}</strong></div>
+    <div><span>Cliente desde</span><strong>${formatShortDate(client.createdAt.slice(0, 10))}</strong></div>
+  </div>`;
+}
+
+function renderPlans(client: Client): SafeHtml {
+  if (!allowed('finance:view')) return html``;
+  const { data } = store();
+  const t = today();
+  const canEdit = allowed('finance:edit');
+  const subs = client.subscriptions ?? [];
+  const month = monthKey(t);
+  return panel({
+    title: 'Planos mensais',
+    icon: 'repeat',
+    count: subs.filter((s) => s.active).length,
+    action: canEdit ? button({ label: 'Ativar plano', action: 'subscription:new', variant: 'ghost', icon: 'plus', size: 'sm', data: { client: client.id } }) : undefined,
+    body: subs.length
+      ? html`<ul class="plans">${subs.map((sub) => {
+          const dates = subscriptionDates(sub, `${sub.startMonth}-01`, `${month}-31`).slice(-4).reverse();
+          return html`<li class="${cx('plan', !sub.active && 'is-paused')}">
+            <div class="plan__head">
+              <strong>${sub.name}</strong>
+              <span>${formatCurrency(sub.amount, true)}/mês · vence dia ${sub.billingDay}${sub.active ? '' : ' · pausado'}${sub.endMonth ? ` · até ${monthLabel(sub.endMonth)}` : ''}</span>
+              ${canEdit ? button({ label: 'Editar plano', iconOnly: true, icon: 'edit', variant: 'ghost', size: 'sm', action: 'subscription:edit', data: { client: client.id, id: sub.id } }) : ''}
+            </div>
+            ${sub.active && dates.length
+              ? html`<ul class="plan__months">${dates.map((date) => {
+                  const entry = data.finance.entries.find((e) => e.subscriptionId === sub.id && e.dueDate === date);
+                  const paid = Boolean(entry?.paidAt);
+                  const late = !paid && date < t;
+                  return html`<li class="${cx('plan__month', paid && 'is-paid', late && 'is-late')}">
+                    <label><input type="checkbox" class="check" ${paid ? 'checked' : ''} ${canEdit ? '' : 'disabled'} data-change="subscription:pay" data-client="${client.id}" data-id="${sub.id}" data-date="${date}" />
+                      <span>${monthLabel(date.slice(0, 7))}</span></label>
+                    <span class="plan__status">${paid ? `Pago em ${formatShortDate(entry!.paidAt!)}` : late ? `Vencido · ${formatShortDate(date)}` : `Vence ${formatShortDate(date)}`}</span>
+                    ${!paid && canEdit ? button({ label: 'Lembrar no WhatsApp', icon: 'chat', variant: 'ghost', size: 'sm', action: 'subscription:charge', data: { client: client.id, id: sub.id, date } }) : ''}
+                  </li>`;
+                })}</ul>`
+              : ''}
+          </li>`;
+        })}</ul>`
+      : emptyState({ icon: 'repeat', compact: true, title: 'Nenhum plano mensal', text: 'Ative o plano (ex.: Essencial) para o sistema criar a cobrança de todo mês e somar na receita recorrente.' }),
+  });
+}
+
+function renderLinks(client: Client): SafeHtml {
+  const canEdit = allowed('commercial:edit');
+  const t = today();
+  const renews = client.domain?.renewsOn;
+  return panel({
+    title: 'Acessos e links',
+    icon: 'link',
+    action: canEdit ? button({ label: 'Adicionar link', action: 'client-link:new', variant: 'ghost', icon: 'plus', size: 'sm', data: { client: client.id } }) : undefined,
+    body: html`
+      <div class="domain-row">
+        <span class="domain-row__icon">${icon('globe', 16)}</span>
+        <div>
+          <strong>${client.domain?.name || 'Domínio não informado'}</strong>
+          <small class="${cx(renews && renews < t && 'text-danger')}">${renews ? `Renova em ${formatShortDate(renews)}` : 'Informe a data de renovação para receber o aviso'}</small>
+        </div>
+        ${canEdit ? button({ label: 'Editar domínio', iconOnly: true, icon: 'edit', variant: 'ghost', size: 'sm', action: 'client-domain:edit', data: { client: client.id } }) : ''}
+      </div>
+      ${(client.links ?? []).length
+        ? html`<ul class="link-rows">${(client.links ?? []).map(
+            (l) => html`<li>${externalLink(l.url, l.label)}${canEdit ? button({ label: `Remover ${l.label}`, iconOnly: true, icon: 'close', variant: 'ghost', size: 'sm', action: 'client-link:remove', data: { client: client.id, id: l.id } }) : ''}</li>`,
+          )}</ul>`
+        : html`<p class="muted small">Guarde aqui o site publicado, o Google Meu Negócio, a pasta de artes... Tudo num lugar só.</p>`}
+      <p class="panel__foot">${icon('lock', 13)} Não guarde senhas aqui: use um gerenciador de senhas.</p>
+    `,
+  });
+}
+
 function renderDetail(client: Client): SafeHtml {
   const { data } = store();
   const t = today();
@@ -242,6 +460,8 @@ function renderDetail(client: Client): SafeHtml {
       subtitle: html`${badge(labelOf(CONTRACT_STATUSES, client.contractStatus), toneOf(CONTRACT_STATUSES, client.contractStatus))} ${demoTag(client)} <span class="muted">${[client.segment, client.city].filter(Boolean).join(' · ')}</span>`,
       actions: button({ label: 'Editar', action: 'client:edit', icon: 'edit', data: { id: client.id } }),
     })}
+
+    ${renderSummary(client)}
 
     <div class="detail-grid">
       <div class="detail-grid__main">
@@ -260,6 +480,7 @@ function renderDetail(client: Client): SafeHtml {
             : emptyState({ icon: 'projects', compact: true, title: 'Nenhum projeto para este cliente' }),
         })}
 
+        ${renderPlans(client)}
         ${renderPayments(client)}
 
         ${panel({
@@ -313,8 +534,8 @@ function renderDetail(client: Client): SafeHtml {
             ${opportunity ? html`<a class="panel__link" href="#/comercial/${opportunity.id}">Ver histórico comercial ${icon('arrowRight', 14)}</a>` : ''}
           `,
         })}
+        ${renderLinks(client)}
         ${client.notes ? panel({ title: 'Observações', body: html`<p>${multiline(client.notes)}</p>` }) : ''}
-        <p class="muted small">Cliente desde ${formatShortDate(client.createdAt.slice(0, 10))}</p>
       </aside>
     </div>
   `;

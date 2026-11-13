@@ -7,6 +7,7 @@ import { navigate } from '../core/router.ts';
 import {
   acceptProposal,
   deleteProposal,
+  effectivePrice,
   proposalRecipient,
   proposalTotals,
   saveProposal,
@@ -14,7 +15,8 @@ import {
   type ProposalInput,
   type ProposalItemInput,
 } from '../domain/business.ts';
-import { PAYMENT_TERMS, PROPOSAL_STATUSES, PROJECT_TYPES, SERVICE_CATEGORIES, isOpenStage, labelOf, projectTypeForCategory, toneOf } from '../domain/labels.ts';
+import { PAYMENT_TERMS, PROPOSAL_STATUSES, PROJECT_TYPES, isOpenStage, labelOf, projectTypeForCategory, toneOf } from '../domain/labels.ts';
+import { categories, categoryLabel } from '../domain/categories.ts';
 import type { AppData, ID, Opportunity, Proposal, ProposalStatus } from '../domain/types.ts';
 import { allowed, requirePermission, rerender, store, today } from '../app/context.ts';
 import { badge, button, demoTag, emptyState, externalLink, pageHeader, panel, segmented, statCard } from '../ui/components.ts';
@@ -37,11 +39,12 @@ export function proposalsOfClient(data: AppData, clientId: ID): Proposal[] {
 }
 
 /** Abas do Comercial: oportunidades (funil) e propostas. */
-export function commercialTabs(active: 'oportunidades' | 'propostas'): SafeHtml {
+export function commercialTabs(active: 'oportunidades' | 'propostas' | 'relatorios'): SafeHtml {
   const count = store().data.proposals.filter((p) => p.status === 'enviada').length;
   return html`<nav class="subnav" aria-label="Seções do Comercial">
     <a class="${cx('subnav__item', active === 'oportunidades' && 'is-active')}" href="#/comercial" ${active === 'oportunidades' ? html`aria-current="page"` : ''}>${icon('kanban', 15)} Oportunidades</a>
     <a class="${cx('subnav__item', active === 'propostas' && 'is-active')}" href="#/comercial/propostas" ${active === 'propostas' ? html`aria-current="page"` : ''}>${icon('file', 15)} Propostas e contratos ${count ? html`<span class="segmented__count">${count}</span>` : ''}</a>
+    <a class="${cx('subnav__item', active === 'relatorios' && 'is-active')}" href="#/comercial/relatorios" ${active === 'relatorios' ? html`aria-current="page"` : ''}>${icon('chart', 15)} Relatórios</a>
   </nav>`;
 }
 
@@ -68,7 +71,12 @@ export function openProposalForm(proposal?: Proposal, preset: { clientId?: ID; o
     : preset.clientId ? `cli:${preset.clientId}` : preset.opportunityId ? `opp:${preset.opportunityId}` : '';
   const openOpps = data.opportunities.filter((o) => !o.clientId && (isOpenStage(o.stage) || o.id === proposal?.opportunityId || o.id === preset.opportunityId));
   const chosen = (serviceId: string) => proposal?.items.find((i) => i.serviceId === serviceId);
-  const byCategory = SERVICE_CATEGORIES.map((c) => ({ ...c, items: services.filter((s) => s.category === c.value) })).filter((c) => c.items.length);
+  const byCategory = categories(data, 'servico', true)
+    .map((c) => ({ value: c.id, label: c.label, items: services.filter((s) => s.category === c.id) }))
+    .filter((c) => c.items.length);
+  const others = services.filter((s) => !categories(data, 'servico', true).some((c) => c.id === s.category));
+  if (others.length) byCategory.push({ value: 'outro', label: 'Outros', items: others });
+  const t = today();
 
   openModal({
     title: proposal ? 'Editar proposta' : 'Nova proposta',
@@ -107,7 +115,7 @@ export function openProposalForm(proposal?: Proposal, preset: { clientId?: ID; o
                   <label class="service-pick__qty"><span class="visually-hidden">Quantidade de ${s.name}</span>
                     <input class="input" type="number" min="1" step="1" name="qty:${s.id}" value="${item?.quantity ?? 1}" inputmode="numeric" /></label>
                   <label class="service-pick__price"><span class="visually-hidden">Valor de ${s.name}</span>
-                    <input class="input" name="price:${s.id}" value="${String(item?.price ?? s.price).replace('.', ',')}" inputmode="decimal" data-billing="${s.billing}" /></label>
+                    <input class="input" name="price:${s.id}" value="${String(item?.price ?? effectivePrice(s, t)).replace('.', ',')}" inputmode="decimal" data-billing="${s.billing}" /></label>
                   <span class="service-pick__billing">${s.billing === 'mensal' ? '/mês' : 'único'}</span>
                 </div>`;
               })}
@@ -377,7 +385,7 @@ export function renderProposalDetail(p: Proposal): SafeHtml {
             <thead><tr><th>Serviço</th><th class="num">Qtd.</th>${finance ? html`<th class="num">Valor</th><th class="num">Subtotal</th>` : ''}</tr></thead>
             <tbody>${p.items.map(
               (i) => html`<tr>
-                <td class="cell-main">${i.name}<span class="cell-sub">${labelOf(SERVICE_CATEGORIES, i.category)} · ${i.billing === 'mensal' ? 'mensal' : 'pagamento único'}</span></td>
+                <td class="cell-main">${i.name}<span class="cell-sub">${categoryLabel(store().data, 'servico', i.category)} · ${i.billing === 'mensal' ? 'mensal' : 'pagamento único'}</span></td>
                 <td data-label="Qtd." class="num">${i.quantity}</td>
                 ${finance ? html`<td data-label="Valor" class="num">${formatCurrency(i.price, true)}</td><td data-label="Subtotal" class="num">${formatCurrency(i.price * i.quantity, true)}${i.billing === 'mensal' ? '/mês' : ''}</td>` : ''}
               </tr>`,

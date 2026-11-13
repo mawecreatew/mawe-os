@@ -7,6 +7,7 @@ import { overdueTasks, pipelineSummary } from '../domain/selectors.ts';
 import { teamMembers } from '../domain/people.ts';
 import { avatar } from '../ui/components.ts';
 import { icon, type IconName } from '../ui/icons.ts';
+import '../ui/search.ts';
 import { allowed, auth, brandAssets, store, today } from './context.ts';
 
 interface NavItem {
@@ -104,6 +105,10 @@ export function renderSidebar(activeSection: string): SafeHtml {
       <button type="button" class="sidebar__close btn btn--ghost btn--icon" data-action="nav:close" aria-label="Fechar menu">${icon('close')}</button>
     </div>
 
+    <button type="button" class="nav-search" data-action="search:open">
+      ${icon('search', 16)}<span>Buscar</span><kbd>Ctrl K</kbd>
+    </button>
+
     <nav class="nav" aria-label="Navegação principal">
       ${NAV.filter((item) => !item.finance || allowed('finance:view')).map((item, i, list) => {
         const count = item.count?.() ?? 0;
@@ -119,6 +124,12 @@ export function renderSidebar(activeSection: string): SafeHtml {
     </nav>
 
     <div class="sidebar__footer">
+      <a class="${cx('nav__item', activeSection === 'equipe' && 'is-active')}" href="#/equipe" data-action="nav:close">
+        ${icon('user', 18)}<span class="nav__label">Equipe</span>
+      </a>
+      <a class="${cx('nav__item', activeSection === 'categorias' && 'is-active')}" href="#/categorias" data-action="nav:close">
+        ${icon('tag', 18)}<span class="nav__label">Categorias</span>
+      </a>
       <a class="${cx('nav__item', activeSection === 'sistema' && 'is-active')}" href="#/sistema" data-action="nav:close">
         ${icon('settings', 18)}<span class="nav__label">Sistema</span>
       </a>

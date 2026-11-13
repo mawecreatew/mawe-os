@@ -180,17 +180,7 @@ export const SERVICE_CATEGORIES: Option<ServiceCategory>[] = [
 ];
 
 /** Tipo de projeto criado a partir de um serviço do catálogo. */
-export function projectTypeForCategory(category: ServiceCategory): ProjectType {
-  const map: Record<ServiceCategory, ProjectType> = {
-    site: 'site',
-    sistema: 'sistema',
-    conteudo: 'pacote_conteudo',
-    plano_mensal: 'plano_mensal',
-    trafego: 'outro',
-    outro: 'outro',
-  };
-  return map[category];
-}
+export { projectTypeForCategory } from './categories.ts';
 
 export const PROPOSAL_STATUSES: Option<ProposalStatus>[] = [
   { value: 'rascunho', label: 'Rascunho', tone: 'neutral' },

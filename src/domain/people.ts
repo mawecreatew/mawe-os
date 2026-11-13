@@ -7,7 +7,7 @@
  */
 import { createId } from '../core/id.ts';
 import { fillDefaults } from './normalize.ts';
-import type { AppData, ID, User } from './types.ts';
+import type { AppData, ID, Role, User } from './types.ts';
 
 /** Prefixo usado no formulário para uma pessoa digitada que ainda não existe. */
 export const NEW_PERSON_PREFIX = 'nova:';
@@ -89,6 +89,29 @@ export function removePerson(draft: AppData, userId: ID, fallbackId: ID): void {
   for (const p of draft.projects) p.ownerIds = strip(p.ownerIds);
   for (const o of draft.opportunities) o.ownerIds = strip(o.ownerIds);
   draft.users = draft.users.filter((u) => u.id !== userId);
+}
+
+/** Dá login a uma pessoa extra: ela vira colaborador(a). Ainda é preciso ligar a conta no Supabase. */
+export function grantAccess(draft: AppData, userId: ID, title = 'Colaborador(a)'): User {
+  const user = draft.users.find((u) => u.id === userId);
+  if (!user) throw new Error('Pessoa não encontrada.');
+  user.guest = false;
+  user.role = 'colaborador';
+  user.title = title;
+  return user;
+}
+
+/** Troca o papel de alguém da equipe. Ninguém muda o próprio papel (evita perder o acesso). */
+export function setRole(draft: AppData, userId: ID, role: Role, byUserId: ID): void {
+  const user = draft.users.find((u) => u.id === userId);
+  if (!user) throw new Error('Pessoa não encontrada.');
+  if (userId === byUserId) throw new Error('Você não pode mudar o seu próprio papel.');
+  if (user.guest) throw new Error('Primeiro dê acesso ao sistema para esta pessoa.');
+  if (role !== 'socio' && !draft.users.some((u) => u.id !== userId && !u.guest && u.role === 'socio')) {
+    throw new Error('O sistema precisa de pelo menos um sócio.');
+  }
+  user.role = role;
+  user.title = role === 'socio' ? 'Sócio(a)' : 'Colaborador(a)';
 }
 
 type Legacy = { assigneeId?: ID; assigneeIds?: ID[]; ownerId?: ID; ownerIds?: ID[] };

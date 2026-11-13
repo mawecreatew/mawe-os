@@ -55,6 +55,19 @@ Se a operação lançar erro, nada é alterado e o erro aparece como aviso.
 - Etapas do funil ficam em `AppData.pipelineStages`; `ganho` e `perdido` são fixas.
 - Tipos de projeto e seus modelos de etapas/checklist ficam em `domain/templates.ts`.
 
+## Áreas adicionadas na v0.6
+
+- `domain/commercial.ts`: tipo de cada etapa (`nossa_vez`, `vez_cliente`, `pausado`), situação de
+  cada lead (`followStatus`), registro de contatos, motivos de perda, números do topo, relatórios
+  e link do WhatsApp. "Atrasado" só existe quando a próxima ação depende da agência.
+- `domain/categories.ts`: listas editáveis. Serviços guardam o id da categoria; as demais listas
+  guardam o nome, e renomear atualiza os registros.
+- `domain/finance.ts`: planos mensais dos clientes (`Client.subscriptions`), caixa atual
+  (`cashPosition`), mês a mês (`monthByMonth`) e reservas.
+- `domain/activity.ts` e `domain/search.ts`: atividade da equipe e busca rápida.
+- `domain/normalize.ts` ganhou **ajustes únicos** (`meta.migrations`): rodam uma vez, de forma
+  determinística, nos dados já salvos (ex.: tirar lembretes antigos de etapas que esperam o cliente).
+
 ## Permissões
 
 `domain/permissions.ts` define o que cada papel pode fazer (`socio`, `colaborador`).

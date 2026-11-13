@@ -29,6 +29,8 @@ import { libraryView } from './views/library.ts';
 import { projectsView } from './views/projects.ts';
 import { systemView } from './views/system.ts';
 import { tasksView } from './views/tasks.ts';
+import { categoriesView } from './views/categories.ts';
+import { teamView } from './views/team.ts';
 
 const ROUTES: Record<string, View> = {
   painel: dashboardView,
@@ -43,6 +45,8 @@ const ROUTES: Record<string, View> = {
   biblioteca: libraryView,
   agentes: agentsView,
   sistema: systemView,
+  categorias: categoriesView,
+  equipe: teamView,
 };
 
 const notFoundView: View = {

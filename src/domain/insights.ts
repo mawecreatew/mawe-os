@@ -3,6 +3,7 @@
  * funil de vendas está perdendo clientes. Funções puras (testáveis).
  */
 import { addDays, type ISODate } from '../core/dates.ts';
+import { followStatus } from './commercial.ts';
 import { upcomingBills } from './finance.ts';
 import { WON_STAGE, isOpenStage, openStages } from './labels.ts';
 import { activeProjects } from './selectors.ts';
@@ -10,7 +11,7 @@ import type { AppData, ID, Opportunity } from './types.ts';
 
 // ---------------------------------------------------------------- Foco de hoje
 
-export type FocusKind = 'followup' | 'task' | 'bill' | 'delivery';
+export type FocusKind = 'followup' | 'task' | 'bill' | 'delivery' | 'domain';
 
 export interface FocusItem {
   key: string;
@@ -42,16 +43,37 @@ export function todayFocus(data: AppData, today: ISODate, options: { finance: bo
   const items: FocusItem[] = [];
 
   for (const o of data.opportunities) {
-    if (!isOpenStage(o.stage) || !o.followUpDate || o.followUpDate > today) continue;
+    if (!isOpenStage(o.stage)) continue;
+    const status = followStatus(data, o, today);
+    if (!status.needsAction) continue;
+    const title =
+      status.state === 'follow_up' ? `Fazer follow-up com ${o.company}` : status.state === 'lembrete' ? `Lembrete: ${o.company}` : `Retornar para ${o.company}`;
     items.push({
       key: `o:${o.id}`,
       kind: 'followup',
-      title: `Retornar para ${o.company}`,
-      subtitle: o.nextAction || 'Retorno comercial',
-      date: o.followUpDate,
-      overdue: o.followUpDate < today,
+      title,
+      subtitle: status.state === 'follow_up' ? `${status.label}${o.nextAction ? ` · ${o.nextAction}` : ''}` : o.nextAction || 'Retorno comercial',
+      date: o.followUpDate && o.followUpDate <= today ? o.followUpDate : today,
+      // Só fica "atrasado" o que depende de vocês e já passou da data.
+      overdue: status.state === 'pendente',
       href: `#/comercial/${o.id}`,
       ownerIds: o.ownerIds,
+    });
+  }
+
+  // Domínios de clientes que renovam nos próximos 30 dias.
+  for (const c of data.clients) {
+    const renews = c.domain?.renewsOn;
+    if (!renews || renews > addDays(today, 30)) continue;
+    items.push({
+      key: `d:${c.id}`,
+      kind: 'domain',
+      title: `Renovar domínio ${c.domain!.name || ''} (${c.company})`.replace('  ', ' '),
+      subtitle: renews < today ? 'Domínio venceu: confira com o cliente' : 'Avisar o cliente para renovar no registro.br',
+      date: renews,
+      overdue: renews < today,
+      href: `#/clientes/${c.id}`,
+      ownerIds: [],
     });
   }
 
@@ -103,7 +125,7 @@ export function todayFocus(data: AppData, today: ISODate, options: { finance: bo
     });
   }
 
-  const weight: Record<FocusKind, number> = { followup: 0, bill: 1, delivery: 2, task: 3 };
+  const weight: Record<FocusKind, number> = { followup: 0, bill: 1, delivery: 2, task: 3, domain: 4 };
   return items.sort((a, b) => a.date.localeCompare(b.date) || weight[a.kind] - weight[b.kind] || a.title.localeCompare(b.title));
 }
 

@@ -12,7 +12,10 @@ import { registerActions, registerForms } from '../core/events.ts';
 import { formatCurrency, parseMoney, pluralize } from '../core/format.ts';
 import { cx, html, type SafeHtml } from '../core/html.ts';
 import { TRACKED_SOURCES, goalsFor, monthIndicators, setMonthlyGoals } from '../domain/business.ts';
-import { monthlyRecurringRevenue, percentChange, revenueReport, upcomingBills, type RevenuePeriod, type RevenueReport } from '../domain/finance.ts';
+import { cashPosition, monthlyRecurringRevenue, percentChange, revenueReport, upcomingBills, type RevenuePeriod, type RevenueReport } from '../domain/finance.ts';
+import { recentActivity } from '../domain/activity.ts';
+import { formatTimestamp } from '../core/dates.ts';
+import { findUser } from '../domain/selectors.ts';
 import { salesFunnel, todayFocus, type FocusItem, type FocusKind } from '../domain/insights.ts';
 import type { MonthlyGoals } from '../domain/types.ts';
 import { activeProjects, currentStage, findClient, greeting, projectProgress } from '../domain/selectors.ts';
@@ -201,6 +204,7 @@ function renderFinanceHero(): SafeHtml {
   const toReceive = receivables.reduce((s, m) => s + m.amount, 0);
   const lateReceive = receivables.filter((m) => m.dueDate < t).reduce((s, m) => s + m.amount, 0);
   const mrr = monthlyRecurringRevenue(data, monthKey(t));
+  const cash = cashPosition(data, t);
 
   return html`
     <section class="finance-hero">
@@ -226,13 +230,19 @@ function renderFinanceHero(): SafeHtml {
 
       <div class="finance-hero__kpis">
         ${kpi({
+          label: 'Caixa atual',
+          value: formatCurrency(cash.balance, true),
+          hint: cash.reserved ? `${formatCurrency(cash.free, true)} livre · ${formatCurrency(cash.reserved, true)} em reservas` : 'Soma de todos os meses',
+          tone: cash.balance < 0 ? 'danger' : undefined,
+          iconName: 'wallet',
+        })}
+        ${kpi({
           label: 'Lucro no período',
           value: formatCurrency(report.profit, true),
-          hint: report.revenue ? `Margem de ${Math.round((report.profit / report.revenue) * 100)}%` : 'Faturamento − despesas',
+          hint: `Despesas: ${formatCurrency(report.expenses, true)}${report.revenue ? ` · margem de ${Math.round((report.profit / report.revenue) * 100)}%` : ''}`,
           tone: report.profit < 0 ? 'danger' : report.profit > 0 ? 'success' : undefined,
           iconName: 'money',
         })}
-        ${kpi({ label: 'Despesas no período', value: formatCurrency(report.expenses, true), hint: 'Sem contar retiradas dos sócios', iconName: 'wallet' })}
         ${kpi({
           label: 'A receber (próx. 30 dias)',
           value: formatCurrency(toReceive, true),
@@ -244,7 +254,7 @@ function renderFinanceHero(): SafeHtml {
           label: 'Receita recorrente',
           value: `${formatCurrency(mrr.total, true)}/mês`,
           hint: mrr.plans ? pluralize(mrr.plans, 'plano mensal ativo', 'planos mensais ativos') : 'Nenhum plano mensal ativo',
-          href: '#/projetos',
+          href: '#/clientes',
           iconName: 'repeat',
         })}
       </div>
@@ -258,10 +268,11 @@ const FOCUS_META: Record<FocusKind, { icon: IconName; label: string }> = {
   task: { icon: 'tasks', label: 'Tarefa' },
   bill: { icon: 'wallet', label: 'Financeiro' },
   delivery: { icon: 'flag', label: 'Entrega' },
+  domain: { icon: 'globe', label: 'Domínio' },
 };
 
 function focusWhen(item: FocusItem, t: string): SafeHtml {
-  if (item.overdue) return html`<span class="focus__when is-late">Atrasado · ${formatShortDate(item.date)}</span>`;
+  if (item.overdue) return html`<span class="focus__when is-late">Pendente · ${formatShortDate(item.date)}</span>`;
   if (item.date === t) return html`<span class="focus__when is-today">Hoje</span>`;
   return html`<span class="focus__when">${relativeDay(item.date, t)}</span>`;
 }
@@ -432,7 +443,7 @@ function renderGoals(): SafeHtml {
         ${goalBar('Propostas enviadas', ind.proposalsSent, goals.proposalsSent, count)}
         ${goalBar('Propostas aceitas', ind.proposalsAccepted, goals.proposalsAccepted, count, ind.proposalsSent ? html`<span class="goal__hint">${Math.round((ind.proposalsAccepted / ind.proposalsSent) * 100)}% de aceite</span>` : undefined)}
       </div>
-      <p class="panel__foot">${icon('info', 13)} Contatos e respostas vêm dos botões "Contato feito" e "Respondeu" de cada oportunidade no Comercial.</p>
+      <p class="panel__foot">${icon('info', 13)} Contatos e respostas vêm do que vocês registram em cada oportunidade no Comercial (WhatsApp, Liguei, Respondeu).</p>
     `,
   });
 }
@@ -450,7 +461,8 @@ function openGoalsForm(): void {
         <div class="form-grid">
           ${textField({ name: 'revenue', label: 'Faturamento (R$)', value: val(goals.revenue), inputmode: 'decimal', autofocus: true })}
           ${textField({ name: 'newClients', label: 'Clientes novos', type: 'number', value: val(goals.newClients) })}
-          ${textField({ name: 'contacts', label: 'Contatos de prospecção', type: 'number', value: val(goals.contacts) })}
+          ${textField({ name: 'contacts', label: 'Contatos de prospecção (no mês)', type: 'number', value: val(goals.contacts) })}
+          ${textField({ name: 'dailyContacts', label: 'Contatos por dia', type: 'number', value: val(goals.dailyContacts ?? null), hint: 'Aparece no topo do Comercial.' })}
           ${textField({ name: 'proposalsSent', label: 'Propostas enviadas', type: 'number', value: val(goals.proposalsSent) })}
           ${textField({ name: 'proposalsAccepted', label: 'Propostas aceitas', type: 'number', value: val(goals.proposalsAccepted) })}
         </div>
@@ -479,12 +491,33 @@ registerForms({
       contacts: read('contacts'),
       proposalsSent: read('proposalsSent'),
       proposalsAccepted: read('proposalsAccepted'),
+      dailyContacts: read('dailyContacts'),
     };
     await store().apply((draft) => setMonthlyGoals(draft, form.dataset.month!, goals));
     closeModal();
     toast('Metas do mês salvas.');
   },
 });
+
+function renderActivity(): SafeHtml {
+  const { data } = store();
+  const items = recentActivity(data, 8);
+  return panel({
+    title: 'Atividade da equipe',
+    icon: 'activity',
+    action: html`<a class="btn btn--ghost btn--sm" href="#/equipe">Ver tudo</a>`,
+    body: items.length
+      ? html`<ul class="activity">${items.map((a) => {
+          const user = findUser(data, a.userId);
+          return html`<li class="activity__item">
+            <span class="activity__who">${user?.shortName.split(' ')[0] ?? 'Alguém'}</span>
+            ${a.href ? html`<a href="${a.href}">${a.text}</a>` : html`<span>${a.text}</span>`}
+            <small>${formatTimestamp(a.at)}</small>
+          </li>`;
+        })}</ul>`
+      : emptyState({ icon: 'activity', compact: true, title: 'Nada registrado ainda', text: 'Contatos, clientes novos e pagamentos aparecem aqui.' }),
+  });
+}
 
 export const dashboardView: View = {
   title: () => 'Painel',
@@ -511,7 +544,10 @@ export const dashboardView: View = {
       </div>
 
       ${renderGoals()}
-      ${renderProjects()}
+      <div class="dashboard-grid">
+        <div class="dashboard-grid__main">${renderProjects()}</div>
+        <aside class="dashboard-grid__side">${renderActivity()}</aside>
+      </div>
     `;
   },
 };

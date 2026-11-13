@@ -113,6 +113,8 @@ try {
       'Serviços e preços': 'Serviços e preços',
       Biblioteca: 'Biblioteca',
       'Central de agentes': 'Central de agentes',
+      Equipe: 'Equipe',
+      Categorias: 'Categorias',
       Sistema: 'Sistema',
       Painel: null,
     };
@@ -265,7 +267,7 @@ try {
     await modal().locator('#stage-new').press('Enter');
     await modal().locator('.stage-editor__row input[value="Reunião marcada"]').waitFor();
     // Nova etapa entra antes de "Ganho".
-    const labels = await modal().locator('.stage-editor__row input').evaluateAll((els) => els.map((e) => e.value));
+    const labels = await modal().locator('.stage-editor__row input[id^="stage-"]').evaluateAll((els) => els.map((e) => e.value));
     assert.deepEqual(labels.slice(-3), ['Reunião marcada', 'Ganho', 'Perdido']);
     // Renomeia
     const input = modal().locator('.stage-editor__row input[value="Reunião marcada"]');
@@ -291,15 +293,42 @@ try {
     assert.equal(await page.locator('.board__title', { hasText: 'Negociação' }).count(), 0);
   });
 
-  await step('prospecção: marca contato feito e resposta', async () => {
+  await step('prospecção: registra contato e resposta, e o lead sai de "para agir hoje"', async () => {
     await page.locator('.opp-card__link').first().click();
     await page.waitForURL(/#\/comercial\/opp_/);
-    await page.locator('.panel', { hasText: 'Prospecção' }).waitFor();
-    const contacted = page.getByRole('button', { name: 'Marcar contato feito hoje' });
-    if (await contacted.count()) await contacted.click();
-    await page.locator('.milestone.is-done', { hasText: 'Contato feito' }).waitFor();
-    await page.getByRole('button', { name: 'Marcar que respondeu hoje' }).click();
-    await page.locator('.milestone.is-done', { hasText: 'Respondeu' }).waitFor();
+    const panelContacts = page.locator('.panel', { has: page.locator('.panel__title', { hasText: 'Contatos' }) });
+    await panelContacts.waitFor();
+    await panelContacts.getByRole('button', { name: 'Liguei' }).click();
+    await modal().locator('input[name=note]').fill('Liguei e expliquei a prévia');
+    await submitModal();
+    await page.locator('.toast', { hasText: 'Contato registrado' }).waitFor();
+    await panelContacts.locator('.contact-log__item', { hasText: 'Liguei e expliquei a prévia' }).waitFor();
+    await panelContacts.getByRole('button', { name: 'Respondeu' }).click();
+    await submitModal();
+    await panelContacts.locator('.contact-log__item.is-reply').waitFor();
+    // Os números do topo do Comercial contam a mensagem enviada.
+    await go('#/comercial');
+    const sent = Number(await page.locator('.cmetric', { hasText: 'Mensagens enviadas' }).locator('.cmetric__value').innerText());
+    assert.ok(sent >= 1, 'deveria contar ao menos 1 mensagem enviada');
+    // Filtro rápido pelos cards do topo.
+    await page.locator('.cmetric', { hasText: 'Aguardando cliente' }).click();
+    await page.locator('.filter-chip', { hasText: 'aguardando o cliente' }).waitFor();
+    await page.locator('.filter-chip').getByRole('button', { name: 'mostrar todos' }).click();
+  });
+
+  await step('comercial: mover para Perdido pergunta o motivo e aparece nos relatórios', async () => {
+    await go('#/comercial');
+    await page.getByRole('tab', { name: 'Lista' }).click();
+    await page.locator('.table .cell-main a').first().click();
+    await page.waitForURL(/#\/comercial\/opp_/);
+    await page.locator('#opp-stage').selectOption('perdido');
+    await modal().locator('select[name=reason]').selectOption('Achou caro');
+    await submitModal();
+    await page.locator('.toast', { hasText: 'Motivo registrado' }).waitFor();
+    await go('#/comercial/relatorios');
+    await page.locator('.hbars__row', { hasText: 'Achou caro' }).waitFor();
+    await go('#/comercial');
+    await page.getByRole('tab', { name: 'Funil' }).click();
   });
 
   await step('serviços: cadastra, aparece no catálogo e desativa', async () => {
@@ -326,9 +355,9 @@ try {
     await modal().locator('select[name=to]').selectOption({ label: 'Studio Equilíbrio Pilates' });
     await modal().locator('input[name=svc][value=svc_landing]').check();
     await modal().locator('input[name=svc][value=svc_essencial]').check();
-    await modal().locator('[data-proposal-total]', { hasText: 'R$ 600,00 + R$ 49,00/mês' }).waitFor();
+    await modal().locator('[data-proposal-total]', { hasText: 'R$ 600,00 + R$ 49,99/mês' }).waitFor();
     await modal().locator('input[name="price:svc_landing"]').fill('650');
-    await modal().locator('[data-proposal-total]', { hasText: 'R$ 650,00 + R$ 49,00/mês' }).waitFor();
+    await modal().locator('[data-proposal-total]', { hasText: 'R$ 650,00 + R$ 49,99/mês' }).waitFor();
     await modal().locator('input[name=contractLink]').fill('drive.google.com/contrato-teste');
     await submitModal();
     await page.waitForURL(/#\/comercial\/propostas\/ppl_/);
@@ -425,6 +454,82 @@ try {
     await page.getByRole('tab', { name: /Despesas recorrentes/ }).click();
     await page.locator('tr', { hasText: 'Assinatura E2E' }).waitFor();
     await page.getByRole('tab', { name: 'Entradas e saídas' }).click();
+  });
+
+  await step('financeiro: caixa de todos os meses, mês a mês, período e reservas', async () => {
+    await go('#/financeiro');
+    await page.locator('.cash-bar__value').waitFor();
+    assert.match(await page.locator('.cash-bar__value').innerText(), /R\$/);
+    await page.locator('.segmented__item', { hasText: 'Desde o início' }).click();
+    await page.locator('.panel__title', { hasText: 'desde o início' }).waitFor();
+    await page.getByRole('tab', { name: /Mês a mês/ }).click();
+    await page.locator('table tfoot', { hasText: 'Total' }).waitFor();
+    await page.getByRole('tab', { name: /Reservas/ }).click();
+    await page.getByRole('button', { name: 'Nova reserva' }).first().click();
+    await modal().locator('input[name=name]').fill('Ferramentas E2E');
+    await modal().locator('input[name=goal]').fill('300');
+    await submitModal();
+    const card = page.locator('.reserve-card', { hasText: 'Ferramentas E2E' });
+    await card.getByRole('button', { name: 'Guardar' }).click();
+    await modal().locator('input[name=amount]').fill('120');
+    await submitModal();
+    await card.locator('.reserve-card__value', { hasText: 'R$ 120,00' }).waitFor();
+    await page.locator('.cash-bar__parts', { hasText: 'Em reservas' }).waitFor();
+    await page.getByRole('tab', { name: /Entradas e saídas/ }).click();
+    await page.getByRole('tab', { name: 'Mês', exact: true }).click();
+  });
+
+  await step('clientes: ativa plano mensal, cobrança aparece e marca como pago', async () => {
+    await go('#/clientes');
+    await page.locator('.client-card').first().click();
+    await page.waitForURL(/#\/clientes\/cli_/);
+    await page.locator('.client-summary').waitFor();
+    await page.getByRole('button', { name: 'Ativar plano' }).click();
+    await modal().locator('select[name=serviceId]').selectOption('svc_essencial');
+    await modal().locator('input[name=name]').fill('Plano Essencial');
+    await modal().locator('input[name=amount]').fill('49,99');
+    await submitModal();
+    const month = page.locator('.plan__month').first();
+    await month.waitFor();
+    await month.locator('input[type=checkbox]').check();
+    await page.locator('.plan__month.is-paid').first().waitFor();
+    await page.locator('.client-summary', { hasText: '49,99/mês' }).waitFor();
+    // Link e domínio
+    await page.getByRole('button', { name: 'Adicionar link' }).click();
+    await modal().locator('input[name=label]').fill('Site publicado');
+    await modal().locator('input[name=url]').fill('https://exemplo.com.br');
+    await submitModal();
+    await page.locator('.link-rows a', { hasText: 'Site publicado' }).waitFor();
+  });
+
+  await step('categorias: cria categoria de serviço e ela aparece no cadastro de serviço', async () => {
+    await go('#/categorias/servico');
+    await expectTitle('Categorias');
+    await page.locator('#category-new').fill('Identidade visual E2E');
+    await page.locator('#category-new').press('Enter');
+    await page.locator('.category-row input[value="Identidade visual E2E"]').waitFor();
+    await go('#/servicos');
+    await page.getByRole('button', { name: 'Novo serviço' }).click();
+    const options = await modal().locator('select[name=category] option').allInnerTexts();
+    assert.ok(options.includes('Identidade visual E2E'), 'categoria nova deveria aparecer no formulário');
+    assert.ok(options.includes('Google Meu Negócio'), 'Google Meu Negócio deveria existir');
+    await modal().getByRole('button', { name: 'Cancelar' }).click();
+  });
+
+  await step('busca rápida: Ctrl+K encontra e abre um lead', async () => {
+    await go('#/painel');
+    await page.keyboard.press('Control+k');
+    await modal().locator('#global-search').fill('studio equil');
+    await modal().locator('.search-result', { hasText: 'Studio Equilíbrio' }).first().waitFor();
+    await modal().locator('#global-search').press('Enter');
+    await page.waitForURL(/#\/(comercial|clientes)\//);
+  });
+
+  await step('equipe: mostra quem faz o quê e a atividade recente', async () => {
+    await go('#/equipe');
+    await expectTitle('Equipe');
+    assert.ok((await page.locator('.team-card').count()) >= 2);
+    await page.locator('.activity__item').first().waitFor();
   });
 
   await step('tráfego pago: campanha com custo por resultado calculado', async () => {

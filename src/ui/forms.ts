@@ -13,7 +13,7 @@ interface BaseField {
 }
 
 export function textField(
-  options: BaseField & { value?: string | number | null; type?: 'text' | 'email' | 'date' | 'url' | 'tel' | 'number' | 'password' | 'month' | 'time'; placeholder?: string; inputmode?: string; autofocus?: boolean },
+  options: BaseField & { value?: string | number | null; type?: 'text' | 'email' | 'date' | 'url' | 'tel' | 'number' | 'password' | 'month' | 'time'; placeholder?: string; inputmode?: string; autofocus?: boolean; suggestions?: string[]; step?: string },
 ): SafeHtml {
   const id = fieldId(options.name);
   return html`
@@ -22,7 +22,9 @@ export function textField(
       <input class="input" id="${id}" name="${options.name}" type="${options.type ?? 'text'}"
         value="${options.value ?? ''}" ${options.placeholder ? html`placeholder="${options.placeholder}"` : ''}
         ${options.required ? 'required' : ''} ${options.inputmode ? html`inputmode="${options.inputmode}"` : ''}
-        ${options.autofocus ? 'autofocus' : ''} autocomplete="${options.type === 'password' ? 'new-password' : 'off'}" />
+        ${options.autofocus ? 'autofocus' : ''} ${options.suggestions ? html`list="${id}-list"` : ''} ${options.step ? html`step="${options.step}"` : ''}
+        autocomplete="${options.type === 'password' ? 'new-password' : 'off'}" />
+      ${options.suggestions ? html`<datalist id="${id}-list">${options.suggestions.map((s) => html`<option value="${s}"></option>`)}</datalist>` : ''}
       ${options.hint ? html`<p class="field__hint">${options.hint}</p>` : ''}
     </div>
   `;

@@ -9,11 +9,12 @@
  *
  * Tudo é registro manual: o Mawe OS não movimenta dinheiro.
  */
-import { addDays, addMonths, diffInDays, isValidISODate, monthKey, type ISODate, type MonthKey } from '../core/dates.ts';
+import { addDays, addMonths, daysInMonth, diffInDays, isValidISODate, monthKey, shiftMonth, type ISODate, type MonthKey } from '../core/dates.ts';
 import { createId } from '../core/id.ts';
 import { CLIENT_INCOME_CATEGORY, WITHDRAWAL_CATEGORY } from './labels.ts';
 import type { ActionContext } from './operations.ts';
-import type { AppData, FinanceEntry, ID, Payer, RecurringExpense } from './types.ts';
+import { logActivity } from './activity.ts';
+import type { AppData, Client, FinanceEntry, ID, Payer, RecurringExpense, Reserve, ReserveMove, Subscription } from './types.ts';
 
 function mustFind<T extends { id: ID }>(list: T[], id: ID, what: string): T {
   const item = list.find((x) => x.id === id);
@@ -57,8 +58,9 @@ export function saveFinanceEntry(draft: AppData, id: ID | null, input: FinanceEn
     Object.assign(entry, clean);
     return entry;
   }
-  const entry: FinanceEntry = { id: createId('fin'), ...clean, recurringId: null, createdAt: ctx.now.toISOString() };
+  const entry: FinanceEntry = { id: createId('fin'), ...clean, recurringId: null, subscriptionId: null, createdAt: ctx.now.toISOString() };
   draft.finance.entries.push(entry);
+  logActivity(draft, ctx, `lançou ${clean.kind === 'entrada' ? 'uma entrada' : 'uma saída'}: ${clean.description}`, '#/financeiro');
   return entry;
 }
 
@@ -70,7 +72,7 @@ export function deleteFinanceEntry(draft: AppData, id: ID): void {
 /** Marca/desmarca como pago (saída) ou recebido (entrada). */
 export function toggleFinanceEntryPaid(draft: AppData, id: ID, paidOn: ISODate): void {
   const entry = mustFind(draft.finance.entries, id, 'Lançamento');
-  if (entry.recurringId && entry.paidAt) {
+  if ((entry.recurringId || entry.subscriptionId) && entry.paidAt) {
     // Ocorrência de recorrência desmarcada: volta a ser calculada automaticamente.
     draft.finance.entries = draft.finance.entries.filter((e) => e.id !== id);
     return;
@@ -124,11 +126,99 @@ export function payRecurringOccurrence(draft: AppData, recurringId: ID, dueDate:
     paidBy: validPayer(draft, paidBy ?? rec.paidBy),
     clientId: null,
     recurringId,
+    subscriptionId: null,
     notes: '',
     createdAt: ctx.now.toISOString(),
   };
   draft.finance.entries.push(entry);
   return entry;
+}
+
+// ---------------------------------------------------------------- Planos mensais dos clientes
+
+export type SubscriptionInput = Pick<Subscription, 'name' | 'serviceId' | 'amount' | 'billingDay' | 'startMonth' | 'endMonth' | 'active'>;
+
+function checkSubscription(input: SubscriptionInput): void {
+  if (!input.name.trim()) throw new Error('Dê um nome para o plano.');
+  if (!(input.amount > 0)) throw new Error('O valor do plano deve ser maior que zero.');
+  if (!Number.isInteger(input.billingDay) || input.billingDay < 1 || input.billingDay > 31) throw new Error('O dia do vencimento deve ser de 1 a 31.');
+  if (!/^\d{4}-\d{2}$/.test(input.startMonth)) throw new Error('Informe o primeiro mês cobrado.');
+  if (input.endMonth !== null && (!/^\d{4}-\d{2}$/.test(input.endMonth) || input.endMonth < input.startMonth)) throw new Error('O último mês precisa ser depois do primeiro.');
+}
+
+export function saveSubscription(draft: AppData, clientId: ID, id: ID | null, input: SubscriptionInput, ctx: ActionContext): Subscription {
+  checkSubscription(input);
+  const client = mustFind(draft.clients, clientId, 'Cliente');
+  const list = (client.subscriptions ??= []);
+  const clean = { ...input, name: input.name.trim() };
+  if (id) {
+    const sub = mustFind(list, id, 'Plano');
+    Object.assign(sub, clean);
+    return sub;
+  }
+  const sub: Subscription = { id: createId('sub'), ...clean, createdAt: ctx.now.toISOString() };
+  list.push(sub);
+  logActivity(draft, ctx, `ativou o plano ${sub.name} para ${client.company}`, `#/clientes/${client.id}`);
+  return sub;
+}
+
+/** Remove o plano. Pagamentos já registrados continuam no histórico. */
+export function deleteSubscription(draft: AppData, clientId: ID, id: ID): void {
+  const client = mustFind(draft.clients, clientId, 'Cliente');
+  client.subscriptions = (client.subscriptions ?? []).filter((s) => s.id !== id);
+  for (const e of draft.finance.entries) if (e.subscriptionId === id) e.subscriptionId = null;
+}
+
+/** Vencimentos de um plano dentro do período [from, to]. */
+export function subscriptionDates(sub: Subscription, from: ISODate, to: ISODate): ISODate[] {
+  const dates: ISODate[] = [];
+  let month = sub.startMonth < from.slice(0, 7) ? from.slice(0, 7) : sub.startMonth;
+  for (let guard = 0; guard < 400 && month <= to.slice(0, 7); guard++, month = shiftMonth(month, 1)) {
+    if (sub.endMonth && month > sub.endMonth) break;
+    const [y, m] = month.split('-').map(Number);
+    const date = `${month}-${String(Math.min(sub.billingDay, daysInMonth(y, m))).padStart(2, '0')}`;
+    if (date >= from && date <= to) dates.push(date);
+  }
+  return dates;
+}
+
+/** Registra o pagamento de um mês do plano (ex.: The House, novembro). */
+export function paySubscription(draft: AppData, clientId: ID, subscriptionId: ID, dueDate: ISODate, paidOn: ISODate, ctx: ActionContext): FinanceEntry {
+  const client = mustFind(draft.clients, clientId, 'Cliente');
+  const sub = mustFind(client.subscriptions ?? [], subscriptionId, 'Plano');
+  const existing = draft.finance.entries.find((e) => e.subscriptionId === subscriptionId && e.dueDate === dueDate);
+  if (existing) {
+    existing.paidAt = paidOn;
+    return existing;
+  }
+  const entry: FinanceEntry = {
+    id: createId('fin'),
+    kind: 'entrada',
+    description: `${client.company} · ${sub.name}`,
+    amount: sub.amount,
+    dueDate,
+    paidAt: paidOn,
+    category: 'Plano mensal',
+    paidBy: 'agencia',
+    clientId: client.id,
+    recurringId: null,
+    subscriptionId,
+    notes: '',
+    createdAt: ctx.now.toISOString(),
+  };
+  draft.finance.entries.push(entry);
+  logActivity(draft, ctx, `registrou o pagamento do plano de ${client.company}`, `#/clientes/${client.id}`);
+  return entry;
+}
+
+export function activeSubscriptions(data: AppData, month: MonthKey): Array<{ client: Client; sub: Subscription }> {
+  const list: Array<{ client: Client; sub: Subscription }> = [];
+  for (const client of data.clients) {
+    for (const sub of client.subscriptions ?? []) {
+      if (sub.active && sub.startMonth <= month && (!sub.endMonth || sub.endMonth >= month)) list.push({ client, sub });
+    }
+  }
+  return list;
 }
 
 /** Datas de vencimento de uma recorrência dentro do período [from, to]. */
@@ -152,7 +242,7 @@ export function recurringDates(rec: RecurringExpense, from: ISODate, to: ISODate
 
 // ---------------------------------------------------------------- Movimentos (visão unificada)
 
-export type MovementSource = 'entry' | 'installment' | 'recurring';
+export type MovementSource = 'entry' | 'installment' | 'recurring' | 'subscription';
 
 export interface Movement {
   /** Identificador estável para a tela. */
@@ -169,6 +259,7 @@ export interface Movement {
   entryId?: ID;
   installmentId?: ID;
   recurringId?: ID;
+  subscriptionId?: ID;
 }
 
 /** Data que define o mês do movimento: quando foi pago ou, se não foi, o vencimento. */
@@ -197,6 +288,7 @@ export function financeMovements(data: AppData, from: ISODate, to: ISODate): Mov
       clientId: e.clientId,
       entryId: e.id,
       recurringId: e.recurringId ?? undefined,
+      subscriptionId: e.subscriptionId ?? undefined,
     };
     if (inRange(m)) list.push(m);
   }
@@ -235,6 +327,27 @@ export function financeMovements(data: AppData, from: ISODate, to: ISODate): Mov
         clientId: null,
         recurringId: rec.id,
       });
+    }
+  }
+  for (const c of data.clients) {
+    for (const sub of c.subscriptions ?? []) {
+      if (!sub.active) continue;
+      for (const date of subscriptionDates(sub, from, to)) {
+        if (data.finance.entries.some((e) => e.subscriptionId === sub.id && e.dueDate === date)) continue;
+        list.push({
+          key: `s:${c.id}:${sub.id}:${date}`,
+          source: 'subscription',
+          kind: 'entrada',
+          description: `${c.company} · ${sub.name}`,
+          amount: sub.amount,
+          dueDate: date,
+          paidAt: null,
+          category: 'Plano mensal',
+          paidBy: 'agencia',
+          clientId: c.id,
+          subscriptionId: sub.id,
+        });
+      }
     }
   }
   return list.sort((a, b) => movementDate(a).localeCompare(movementDate(b)) || a.description.localeCompare(b.description));
@@ -463,10 +576,147 @@ export function monthlyRecurringRevenue(data: AppData, month: MonthKey): { total
   }
   let total = 0;
   let plans = 0;
+  const subs = activeSubscriptions(data, month);
+  const withSubscription = new Set(subs.map((s) => s.client.id));
+  for (const { sub } of subs) {
+    total += sub.amount;
+    plans++;
+  }
   for (const p of latest.values()) {
-    if ((p.period ?? '') < prevMonth || p.status === 'pausado') continue;
+    // Cliente com plano cadastrado em Clientes já foi contado acima.
+    if ((p.period ?? '') < prevMonth || p.status === 'pausado' || withSubscription.has(p.clientId)) continue;
     total += p.extra.amount ?? 0;
     plans++;
   }
   return { total, plans };
+}
+
+// ---------------------------------------------------------------- Caixa
+
+/** Primeiro dia com algum movimento registrado (ou saldo inicial). */
+function firstFinanceDate(data: AppData, today: ISODate): ISODate {
+  let first = today;
+  const consider = (d: ISODate | null | undefined) => {
+    if (d && d < first) first = d;
+  };
+  consider(data.finance.openingBalance?.date);
+  for (const e of data.finance.entries) consider(e.paidAt ?? e.dueDate);
+  for (const c of data.clients) for (const i of c.installments) consider(i.paidAt ?? i.dueDate);
+  return first;
+}
+
+export interface CashPosition {
+  /** Quanto tem na conta da agência hoje (tudo que entrou − tudo que saiu, desde o início). */
+  balance: number;
+  opening: number;
+  received: number;
+  paid: number;
+  withdrawn: number;
+  /** Separado em reservas. */
+  reserved: number;
+  /** Livre para usar: caixa − reservas. */
+  free: number;
+  since: ISODate;
+}
+
+/**
+ * Caixa atual: soma TODOS os meses. Só conta o que foi efetivamente pago ou
+ * recebido. Despesas pagas do bolso de um sócio não saem da conta da agência.
+ */
+export function cashPosition(data: AppData, today: ISODate): CashPosition {
+  const since = firstFinanceDate(data, today);
+  const opening = data.finance.openingBalance?.amount ?? 0;
+  const pos: CashPosition = { balance: 0, opening, received: 0, paid: 0, withdrawn: 0, reserved: 0, free: 0, since };
+  for (const m of financeMovements(data, since, today)) {
+    if (!m.paidAt || m.paidAt > today) continue;
+    if (isWithdrawal(m)) pos.withdrawn += m.amount;
+    else if (m.kind === 'entrada') pos.received += m.amount;
+    else if (m.paidBy === 'agencia') pos.paid += m.amount;
+  }
+  pos.balance = opening + pos.received - pos.paid - pos.withdrawn;
+  pos.reserved = reserveBalances(data).reduce((sum, r) => sum + r.balance, 0);
+  pos.free = pos.balance - pos.reserved;
+  return pos;
+}
+
+export interface MonthRow {
+  month: MonthKey;
+  received: number;
+  paid: number;
+  withdrawn: number;
+  /** Entrou − despesas − retiradas. */
+  result: number;
+  /** Caixa no fim do mês (acumulado desde o início). */
+  cumulative: number;
+}
+
+/** Tabela mês a mês, do primeiro mês com movimento até o mês atual. */
+export function monthByMonth(data: AppData, today: ISODate): MonthRow[] {
+  const first = monthKey(firstFinanceDate(data, today));
+  const last = monthKey(today);
+  const rows: MonthRow[] = [];
+  let cumulative = data.finance.openingBalance?.amount ?? 0;
+  for (let month = first, guard = 0; month <= last && guard < 240; month = shiftMonth(month, 1), guard++) {
+    const s = monthSummary(data, month);
+    // No caixa, despesa paga do bolso de um sócio não sai da conta da agência.
+    const fromPocket = Object.values(s.paidByPartner).reduce((a, b) => a + b, 0);
+    const paidFromAccount = s.paid - fromPocket;
+    const result = s.received - paidFromAccount - s.withdrawn;
+    cumulative += result;
+    rows.push({ month, received: s.received, paid: s.paid, withdrawn: s.withdrawn, result, cumulative });
+  }
+  return rows;
+}
+
+export function setOpeningBalance(draft: AppData, amount: number | null, date: ISODate): void {
+  if (amount === null) {
+    draft.finance.openingBalance = null;
+    return;
+  }
+  if (!Number.isFinite(amount)) throw new Error('Informe um valor válido.');
+  if (!isValidISODate(date)) throw new Error('Informe a data do saldo inicial.');
+  draft.finance.openingBalance = { amount, date };
+}
+
+// ---------------------------------------------------------------- Reservas (caixinhas)
+
+export function saveReserve(draft: AppData, id: ID | null, input: { name: string; goal: number | null }, ctx: ActionContext): Reserve {
+  const name = input.name.trim();
+  if (!name) throw new Error('Dê um nome para a reserva.');
+  if (input.goal !== null && !(input.goal > 0)) throw new Error('A meta deve ser maior que zero.');
+  const list = (draft.finance.reserves ??= []);
+  if (list.some((r) => r.id !== id && r.name.toLocaleLowerCase('pt-BR') === name.toLocaleLowerCase('pt-BR'))) throw new Error(`Já existe a reserva "${name}".`);
+  if (id) {
+    const r = mustFind(list, id, 'Reserva');
+    r.name = name;
+    r.goal = input.goal;
+    return r;
+  }
+  const r: Reserve = { id: createId('res'), name, goal: input.goal, createdAt: ctx.now.toISOString() };
+  list.push(r);
+  return r;
+}
+
+export function deleteReserve(draft: AppData, id: ID): void {
+  draft.finance.reserves = (draft.finance.reserves ?? []).filter((r) => r.id !== id);
+  draft.finance.reserveMoves = (draft.finance.reserveMoves ?? []).filter((m) => m.reserveId !== id);
+}
+
+/** Guarda (+) ou tira (−) dinheiro de uma reserva. */
+export function moveReserve(draft: AppData, reserveId: ID, amount: number, date: ISODate, note: string, ctx: ActionContext): ReserveMove {
+  mustFind(draft.finance.reserves ?? [], reserveId, 'Reserva');
+  if (!Number.isFinite(amount) || amount === 0) throw new Error('Informe um valor.');
+  if (!isValidISODate(date)) throw new Error('Informe a data.');
+  const current = reserveBalances(draft).find((r) => r.reserve.id === reserveId)?.balance ?? 0;
+  if (amount < 0 && current + amount < -0.001) throw new Error('A reserva não tem esse valor para tirar.');
+  const move: ReserveMove = { id: createId('rmv'), reserveId, amount, date, note: note.trim(), createdAt: ctx.now.toISOString() };
+  (draft.finance.reserveMoves ??= []).push(move);
+  return move;
+}
+
+export function reserveBalances(data: AppData): Array<{ reserve: Reserve; balance: number }> {
+  return (data.finance.reserves ?? []).map((reserve) => ({
+    reserve,
+    balance: (data.finance.reserveMoves ?? []).filter((m) => m.reserveId === reserve.id).reduce((s, m) => s + m.amount, 0),
+  }));
 }

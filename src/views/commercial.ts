@@ -5,13 +5,26 @@ import { formatCurrency, normalizeText, parseMoney, pluralize } from '../core/fo
 import { cx, html, multiline, type SafeHtml } from '../core/html.ts';
 import { navigate, type Route } from '../core/router.ts';
 import { opportunityBriefing } from '../agents/context.ts';
-import { LEAD_SOURCES, STAGE_TONES, WON_STAGE, isOpenStage, openStages, pipelineStages, stageLabel, stageOptions, stageTone } from '../domain/labels.ts';
+import { LOST_STAGE, STAGE_TONES, WON_STAGE, isOpenStage, openStages, pipelineStages, stageLabel, stageOptions, stageTone } from '../domain/labels.ts';
+import { goalsFor } from '../domain/business.ts';
+import { categoryNames } from '../domain/categories.ts';
+import {
+  COMMERCIAL_PERIODS,
+  DEFAULT_FOLLOW_UP_DAYS,
+  STAGE_KINDS,
+  attemptsWithoutReply,
+  clearFollowUp,
+  commercialMetrics,
+  followStatus,
+  setStageBehavior,
+  stageKind,
+  type CommercialPeriod,
+} from '../domain/commercial.ts';
 import {
   addOpportunityNote,
   addPipelineStage,
   movePipelineStage,
   removePipelineStage,
-  setOpportunityMilestone,
   updatePipelineStage,
   convertOpportunityToClient,
   createOpportunity,
@@ -22,10 +35,11 @@ import {
   type OpportunityInput,
 } from '../domain/operations.ts';
 import { findOpportunity, findUser, opportunitiesByStage, pipelineSummary, tasksRelatedTo } from '../domain/selectors.ts';
-import type { Opportunity, OpportunityStage, Tone } from '../domain/types.ts';
+import type { Opportunity, OpportunityStage, StageKind, Tone } from '../domain/types.ts';
 import { allowed, requirePermission, rerender, store, today } from '../app/context.ts';
 import type { View } from '../app/view.ts';
-import { avatar, badge, button, demoTag, dueDate, emptyState, pageHeader, panel, people, avatarStack, segmented, statCard } from '../ui/components.ts';
+import { avatar, badge, button, demoTag, emptyState, pageHeader, panel, people, avatarStack, progressBar, segmented } from '../ui/components.ts';
+import { askLostReason, contactPanel, renderReports } from './commercial-extras.ts';
 import { peopleField, readPeople } from '../ui/people-picker.ts';
 import { formActions, selectField, textareaField, textField } from '../ui/forms.ts';
 import { icon } from '../ui/icons.ts';
@@ -37,6 +51,9 @@ import { findProposal } from './proposals.ts';
 
 const ui = {
   mode: 'funil' as 'funil' | 'lista',
+  period: 'mes' as CommercialPeriod,
+  /** Filtro rápido pelos cards do topo. */
+  focus: '' as '' | 'acao' | 'aguardando' | 'pausados',
   owner: 'todos',
   search: '',
   /** Modo de seleção: permite excluir ou mover várias oportunidades de uma vez. */
@@ -46,6 +63,15 @@ const ui = {
 
 function visibleOpportunities(list: Opportunity[]): Opportunity[] {
   let result = ui.owner === 'todos' ? list : list.filter((o) => o.ownerIds.includes(ui.owner));
+  if (ui.focus) {
+    const data = store().data;
+    const t = today();
+    result = result.filter((o) => {
+      if (ui.focus === 'acao') return followStatus(data, o, t).needsAction;
+      const kind = stageKind(data, o.stage);
+      return ui.focus === 'aguardando' ? kind === 'vez_cliente' : kind === 'pausado';
+    });
+  }
   const term = normalizeText(ui.search.trim());
   if (term) {
     result = result.filter((o) => normalizeText([o.company, o.contactName, o.segment, o.source, o.contact.instagram ?? '', o.contact.phone ?? ''].join(' ')).includes(term));
@@ -81,7 +107,7 @@ function openOpportunityForm(opp?: Opportunity, stage?: OpportunityStage): void 
   const { data, currentUser } = store();
   const financeEdit = allowed('finance:edit');
   const v: OpportunityInput = opp ?? {
-    contactName: '', company: '', segment: '', source: 'Instagram', contact: {}, stage: stage ?? openStages(data)[0],
+    contactName: '', company: '', segment: '', source: categoryNames(data, 'origem')[0] ?? 'Instagram', contact: {}, stage: stage ?? openStages(data)[0],
     estimatedValue: null, nextAction: '', followUpDate: null, ownerIds: [currentUser.id], notes: '',
   };
   openModal({
@@ -92,8 +118,8 @@ function openOpportunityForm(opp?: Opportunity, stage?: OpportunityStage): void 
         <div class="form-grid">
           ${textField({ name: 'company', label: 'Empresa', value: v.company, required: true, autofocus: true })}
           ${textField({ name: 'contactName', label: 'Nome do contato', value: v.contactName })}
-          ${textField({ name: 'segment', label: 'Segmento', value: v.segment, placeholder: 'Ex.: Cafeteria, Saúde' })}
-          ${selectField({ name: 'source', label: 'Origem', value: v.source, options: LEAD_SOURCES.map((s) => ({ value: s, label: s })) })}
+          ${textField({ name: 'segment', label: 'Nicho', value: v.segment, placeholder: 'Ex.: Hamburgueria', suggestions: categoryNames(data, 'segmento') })}
+          ${selectField({ name: 'source', label: 'Origem', value: v.source, options: categoryNames(data, 'origem', v.source).map((s) => ({ value: s, label: s })) })}
           ${peopleField({ name: 'ownerIds', label: 'Responsáveis', data, value: v.ownerIds, className: 'span-2' })}
           ${textField({ name: 'email', label: 'E-mail', type: 'email', value: v.contact.email })}
           ${textField({ name: 'phone', label: 'Telefone / WhatsApp', type: 'tel', value: v.contact.phone })}
@@ -102,7 +128,7 @@ function openOpportunityForm(opp?: Opportunity, stage?: OpportunityStage): void 
           ${financeEdit
             ? textField({ name: 'estimatedValue', label: 'Valor estimado (R$)', value: v.estimatedValue ?? '', inputmode: 'decimal', placeholder: 'Deixe vazio se ainda não souber' })
             : html`<div></div>`}
-          ${textField({ name: 'followUpDate', label: 'Data de acompanhamento', type: 'date', value: v.followUpDate ?? '' })}
+          ${textField({ name: 'followUpDate', label: 'Lembrete / próxima ação', type: 'date', value: v.followUpDate ?? '', hint: 'Só vira "pendente" em etapas que dependem de vocês.' })}
           ${textField({ name: 'nextAction', label: 'Próxima ação', value: v.nextAction, className: 'span-2' })}
         </div>
         ${textareaField({ name: 'notes', label: 'Observações', value: v.notes, rows: 3 })}
@@ -137,11 +163,14 @@ registerForms({
     if (id) {
       const previous = findOpportunity(store().data, id);
       await store().apply((draft, ctx) => updateOpportunity(draft, id, { ...input, contact: { ...previous?.contact, ...input.contact } }, ctx));
+      closeModal();
+      toast('Oportunidade atualizada.');
+      if (input.stage === LOST_STAGE && previous?.stage !== LOST_STAGE) askLostReason([id]);
     } else {
       await store().apply((draft, ctx) => createOpportunity(draft, input, ctx));
+      closeModal();
+      toast('Oportunidade cadastrada.');
     }
-    closeModal();
-    toast(id ? 'Oportunidade atualizada.' : 'Oportunidade cadastrada.');
   },
   'opportunity:note': async (form, values) => {
     requirePermission('commercial:edit');
@@ -163,13 +192,32 @@ registerActions({
     const stage = (el as HTMLSelectElement).value as OpportunityStage;
     await store().apply((draft, ctx) => moveOpportunity(draft, el.dataset.id!, stage, ctx));
     toast(`Movida para "${stageLabel(store().data, stage)}".`);
+    if (stage === LOST_STAGE) askLostReason([el.dataset.id!]);
   },
-  'opportunity:milestone': async (el) => {
+  'opportunity:clear-followup': async (el) => {
     requirePermission('commercial:edit');
-    const field = el.dataset.field as 'contactedAt' | 'repliedAt';
-    const date = el.dataset.clear ? null : today();
-    await store().apply((draft, ctx) => setOpportunityMilestone(draft, el.dataset.id!, field, date, ctx));
-    if (date) toast(field === 'contactedAt' ? 'Contato registrado.' : 'Resposta registrada.');
+    await store().apply((draft) => clearFollowUp(draft, el.dataset.id!));
+    toast('Lembrete removido.');
+  },
+  'commercial:period': (el) => {
+    ui.period = el.dataset.value as CommercialPeriod;
+    rerender();
+  },
+  'commercial:focus': (el) => {
+    const value = el.dataset.value as typeof ui.focus;
+    ui.focus = ui.focus === value ? '' : value;
+    rerender();
+  },
+  'stage:kind': async (el) => {
+    requirePermission('commercial:edit');
+    await store().apply((draft) => setStageBehavior(draft, el.dataset.id!, { kind: (el as HTMLSelectElement).value as StageKind }));
+    openStagesModal();
+  },
+  'stage:days': async (el) => {
+    requirePermission('commercial:edit');
+    const value = Number((el as HTMLInputElement).value);
+    await store().apply((draft) => setStageBehavior(draft, el.dataset.id!, { followUpDays: Number.isFinite(value) ? Math.round(value) : 0 }));
+    toast(value > 0 ? `Follow-up sugerido depois de ${value} ${value === 1 ? 'dia' : 'dias'} sem resposta.` : 'Esta etapa não sugere follow-up.');
   },
   'opportunity:proposal': (el) => openProposalForm(undefined, { opportunityId: el.dataset.id }),
   'commercial:stages': () => openStagesModal(),
@@ -275,6 +323,7 @@ registerActions({
     stopSelecting();
     rerender();
     toast(`${pluralize(ids.length, 'oportunidade movida', 'oportunidades movidas')} para "${stageLabel(store().data, stage)}".`);
+    if (stage === LOST_STAGE) askLostReason(ids);
   },
   'commercial:search': (el) => {
     ui.search = (el as HTMLInputElement).value;
@@ -323,13 +372,22 @@ if (typeof document !== 'undefined') {
     const id = draggingId;
     const stage = column.dataset.dropStage as OpportunityStage;
     if (findOpportunity(store().data, id)?.stage === stage || !allowed('commercial:edit')) return;
-    void store().apply((draft, ctx) => moveOpportunity(draft, id, stage, ctx)).then(() =>
-      toast(`Movida para "${stageLabel(store().data, stage)}".`),
-    );
+    void store().apply((draft, ctx) => moveOpportunity(draft, id, stage, ctx)).then(() => {
+      toast(`Movida para "${stageLabel(store().data, stage)}".`);
+      if (stage === LOST_STAGE) askLostReason([id]);
+    });
   });
 }
 
 // ---------------------------------------------------------------- Renderização
+
+/** Situação do lead em uma linha: pendente, hora do follow-up, aguardando há X dias... */
+function followChip(opp: Opportunity, t: string): SafeHtml {
+  const status = followStatus(store().data, opp, t);
+  if (!status.label) return html``;
+  const iconName = status.state === 'follow_up' || status.state === 'lembrete' ? 'send' : status.state === 'aguardando' || status.state === 'sem_resposta' ? 'clock' : 'calendar';
+  return html`<span class="${cx('follow', `follow--${status.tone}`, status.needsAction && 'is-action')}">${icon(iconName, 13)} ${status.label}</span>`;
+}
 
 function opportunityCard(opp: Opportunity): SafeHtml {
   const { data } = store();
@@ -344,7 +402,7 @@ function opportunityCard(opp: Opportunity): SafeHtml {
     <span class="opp-card__sub">${[opp.segment, opp.source].filter(Boolean).join(' · ')} ${demoTag(opp)}</span>
     ${finance && opp.estimatedValue !== null ? html`<span class="opp-card__value">${formatCurrency(opp.estimatedValue)}</span>` : ''}
     ${open && opp.nextAction ? html`<span class="opp-card__next">${icon('arrowRight', 13)} ${opp.nextAction}</span>` : ''}
-    ${open && opp.followUpDate ? dueDate(opp.followUpDate, t) : ''}`;
+    ${open ? followChip(opp, t) : opp.stage === LOST_STAGE && opp.lostReason ? html`<span class="follow follow--neutral">${opp.lostReason}</span>` : ''}`;
 
   if (ui.selecting) {
     const picked = ui.selected.has(opp.id);
@@ -360,7 +418,10 @@ function opportunityCard(opp: Opportunity): SafeHtml {
     <article class="opp-card" draggable="true" data-drag-opportunity="${opp.id}">
       <a class="opp-card__link" href="#/comercial/${opp.id}">${content}</a>
       ${allowed('commercial:edit')
-        ? html`<button type="button" class="opp-card__delete" data-action="opportunity:quick-delete" data-id="${opp.id}" title="Excluir" aria-label="Excluir ${opp.company}">${icon('trash', 14)}</button>`
+        ? html`<span class="opp-card__tools">
+            ${open ? html`<button type="button" class="opp-card__tool" data-action="contact:new" data-id="${opp.id}" title="Registrar contato" aria-label="Registrar contato com ${opp.company}">${icon('chat', 14)}</button>` : ''}
+            <button type="button" class="opp-card__tool opp-card__delete" data-action="opportunity:quick-delete" data-id="${opp.id}" title="Excluir" aria-label="Excluir ${opp.company}">${icon('trash', 14)}</button>
+          </span>`
         : ''}
     </article>
   `;
@@ -405,7 +466,7 @@ function renderList(list: Opportunity[]): SafeHtml {
   return html`
     <div class="table-wrap">
       <table class="table">
-        <thead><tr>${ui.selecting ? html`<th class="cell-pick"><span class="visually-hidden">Selecionar</span></th>` : ''}<th>Empresa</th><th>Etapa</th><th>Responsável</th>${finance ? html`<th class="num">Valor</th>` : ''}<th>Próxima ação</th><th>Acompanhamento</th>${ui.selecting || !edit ? '' : html`<th class="cell-actions"><span class="visually-hidden">Ações</span></th>`}</tr></thead>
+        <thead><tr>${ui.selecting ? html`<th class="cell-pick"><span class="visually-hidden">Selecionar</span></th>` : ''}<th>Empresa</th><th>Etapa</th><th>Responsável</th>${finance ? html`<th class="num">Valor</th>` : ''}<th>Próxima ação</th><th>Situação</th>${ui.selecting || !edit ? '' : html`<th class="cell-actions"><span class="visually-hidden">Ações</span></th>`}</tr></thead>
         <tbody>
           ${sorted.map(
             (o) => html`<tr class="${cx(ui.selected.has(o.id) && 'is-picked')}">
@@ -417,7 +478,7 @@ function renderList(list: Opportunity[]): SafeHtml {
               <td data-label="Responsável">${people(data, o.ownerIds)}</td>
               ${finance ? html`<td data-label="Valor" class="num">${o.estimatedValue === null ? html`<span class="muted">—</span>` : formatCurrency(o.estimatedValue)}</td>` : ''}
               <td data-label="Próxima ação">${o.nextAction || html`<span class="muted">—</span>`}</td>
-              <td data-label="Acompanhamento">${isOpenStage(o.stage) ? dueDate(o.followUpDate, t) : html`<span class="muted">—</span>`}</td>
+              <td data-label="Situação">${isOpenStage(o.stage) ? followChip(o, t) : o.lostReason ? html`<span class="muted">${o.lostReason}</span>` : html`<span class="muted">—</span>`}</td>
               ${ui.selecting || !edit
                 ? ''
                 : html`<td class="cell-actions"><button type="button" class="btn btn--ghost btn--icon btn--sm" data-action="opportunity:quick-delete" data-id="${o.id}" title="Excluir" aria-label="Excluir ${o.company}">${icon('trash', 15)}</button></td>`}
@@ -447,27 +508,55 @@ function renderSelectionBar(list: Opportunity[]): SafeHtml {
     </div>`;
 }
 
+/** Meta diária de prospecção: contatos enviados hoje × meta. */
+function dailyGoal(sentToday: number): SafeHtml {
+  const { data } = store();
+  const goal = goalsFor(data, today().slice(0, 7)).goals.dailyContacts ?? null;
+  if (!goal) {
+    return allowed('finance:edit')
+      ? html`<p class="daily-goal daily-goal--empty">${icon('target', 14)} Hoje: <strong>${sentToday}</strong> ${sentToday === 1 ? 'contato' : 'contatos'} · <button type="button" class="link-button" data-action="goals:edit">definir meta diária</button></p>`
+      : html``;
+  }
+  const pct = Math.min(100, Math.round((sentToday / goal) * 100));
+  return html`<div class="${cx('daily-goal', sentToday >= goal && 'is-done')}">
+    <span class="daily-goal__label">${icon('target', 14)} Meta de hoje: <strong>${sentToday} de ${goal}</strong> contatos</span>
+    ${progressBar(pct, 'Meta diária de contatos')}
+    <span class="daily-goal__hint">${sentToday >= goal ? 'Meta batida!' : `Faltam ${goal - sentToday}`}</span>
+  </div>`;
+}
+
 function renderOverview(): SafeHtml {
   const { data } = store();
   const t = today();
   const finance = allowed('finance:view');
   const summary = pipelineSummary(data, t);
   const list = visibleOpportunities(data.opportunities);
+  const owner = ui.owner === 'todos' ? undefined : ui.owner;
+  const m = commercialMetrics(data, ui.period, t, owner);
+  const periodText = COMMERCIAL_PERIODS.find((p) => p.value === ui.period)?.label.toLowerCase() ?? '';
 
   return html`
     ${pageHeader({
       title: 'Comercial',
-      subtitle: `${pluralize(summary.openCount, 'oportunidade aberta', 'oportunidades abertas')} · ${pluralize(summary.followUpsDue, 'retorno pendente', 'retornos pendentes')}`,
+      subtitle: `${pluralize(m.active, 'lead ativo', 'leads ativos')} · ${summary.followUpsDue ? pluralize(summary.followUpsDue, 'pede ação hoje', 'pedem ação hoje') : 'nada pendente por hoje'}`,
       actions: html`${button({ label: 'Etapas do funil', action: 'commercial:stages', icon: 'settings' })}${button({ label: 'Nova oportunidade', action: 'opportunity:new', variant: 'primary', icon: 'plus' })}`,
     })}
     ${commercialTabs('oportunidades')}
 
-    <div class="stats stats--compact">
-      ${statCard({ label: 'Em aberto', value: String(summary.openCount) })}
-      ${finance ? statCard({ label: 'Valor estimado em aberto', value: formatCurrency(summary.openValue), hint: summary.withoutValue ? `${summary.withoutValue} sem valor definido` : undefined }) : ''}
-      ${statCard({ label: 'Ganhas', value: String(summary.wonCount), hint: finance && summary.wonValue ? formatCurrency(summary.wonValue) : undefined, tone: 'success' })}
-      ${statCard({ label: 'Retornos para hoje ou vencidos', value: String(summary.followUpsDue), tone: summary.followUpsDue ? 'warning' : undefined })}
+    <div class="cmetrics-head">
+      ${segmented({ label: 'Período dos números', action: 'commercial:period', value: ui.period, items: COMMERCIAL_PERIODS })}
+      ${dailyGoal(m.sentToday)}
     </div>
+    <div class="cmetrics">
+      ${metric({ label: 'Para agir hoje', value: m.actionToday, hint: m.actionToday ? 'Dependem de vocês' : 'Tudo em dia', tone: m.actionToday ? 'warning' : 'success', focus: 'acao', iconName: 'flag' })}
+      ${metric({ label: 'Leads ativos', value: m.active, hint: m.paused ? `+ ${m.paused} para depois` : 'Em negociação', focus: '', iconName: 'commercial' })}
+      ${metric({ label: 'Aguardando cliente', value: m.waiting, hint: 'Vocês já fizeram a parte de vocês', focus: 'aguardando', iconName: 'clock' })}
+      ${metric({ label: 'Mensagens enviadas', value: m.sent, hint: `${pluralize(m.contacted, 'lead contatado', 'leads contatados')} · ${periodText}`, iconName: 'send' })}
+      ${metric({ label: 'Taxa de resposta', value: m.replyRate === null ? '—' : `${Math.round(m.replyRate)}%`, hint: m.contacted ? `${m.replied} de ${m.contacted} responderam` : 'Sem contatos no período', iconName: 'chat' })}
+      ${metric({ label: 'Fechados', value: m.won, hint: finance && m.wonValue ? `${formatCurrency(m.wonValue)} · ${periodText}` : m.lost ? `${m.lost} não fecharam · ${periodText}` : periodText, tone: m.won ? 'success' : undefined, iconName: 'check' })}
+    </div>
+    ${finance && summary.openValue ? html`<p class="muted small cmetrics-foot">${icon('money', 13)} Valor estimado em aberto: <strong>${formatCurrency(summary.openValue)}</strong>${summary.withoutValue ? ` · ${summary.withoutValue} sem valor definido` : ''}</p>` : ''}
+    ${ui.focus ? html`<p class="filter-chip">Mostrando só: <strong>${ui.focus === 'acao' ? 'para agir hoje' : ui.focus === 'aguardando' ? 'aguardando o cliente' : 'para depois'}</strong> <button type="button" class="link-button" data-action="commercial:focus" data-value="${ui.focus}">mostrar todos</button></p>` : ''}
 
     <div class="toolbar">
       ${segmented({ label: 'Visualização', action: 'commercial:mode', value: ui.mode, items: [{ value: 'funil', label: 'Funil', icon: 'kanban' }, { value: 'lista', label: 'Lista', icon: 'list' }] })}
@@ -495,6 +584,16 @@ function renderOverview(): SafeHtml {
           ? renderList(list)
           : html`<div class="panel">${emptyState({ icon: 'commercial', title: 'Nenhuma oportunidade para este responsável' })}</div>`}
   `;
+}
+
+function metric(options: { label: string; value: number | string; hint: string; tone?: Tone; focus?: typeof ui.focus; iconName: Parameters<typeof icon>[0] }): SafeHtml {
+  const inner = html`
+    <span class="cmetric__top"><span class="cmetric__icon">${icon(options.iconName, 15)}</span>${options.label}</span>
+    <span class="cmetric__value">${String(options.value)}</span>
+    <span class="cmetric__hint">${options.hint}</span>`;
+  const cls = cx('cmetric', options.tone && `cmetric--${options.tone}`, options.focus !== undefined && ui.focus === options.focus && options.focus && 'is-active');
+  if (options.focus === undefined) return html`<div class="${cls}">${inner}</div>`;
+  return html`<button type="button" class="${cx(cls, 'cmetric--button')}" data-action="commercial:focus" data-value="${options.focus}" title="Filtrar o funil">${inner}</button>`;
 }
 
 function infoItem(label: string, value: SafeHtml | string | null | undefined): SafeHtml {
@@ -580,11 +679,19 @@ function renderDetail(opp: Opportunity): SafeHtml {
             </div>
             ${open
               ? html`<div class="next-action">
-                  <span class="next-action__label">Próxima ação</span>
-                  <p>${opp.nextAction || 'Não definida'}</p>
-                  ${dueDate(opp.followUpDate, t)}
+                  <span class="next-action__label">${stageKind(data, opp.stage) === 'nossa_vez' ? 'Próxima ação (depende de vocês)' : stageKind(data, opp.stage) === 'pausado' ? 'Lead para depois' : 'Esperando o cliente'}</span>
+                  <p>${opp.nextAction || (stageKind(data, opp.stage) === 'nossa_vez' ? 'Não definida' : 'Nada a fazer até o cliente responder')}</p>
+                  ${followChip(opp, t)}
+                  ${opp.followUpDate && allowed('commercial:edit') ? html`<button type="button" class="link-button" data-action="opportunity:clear-followup" data-id="${opp.id}">Tirar lembrete</button>` : ''}
+                  ${attemptsWithoutReply(opp) ? html`<span class="muted small">${pluralize(attemptsWithoutReply(opp), 'tentativa', 'tentativas')} desde a última resposta</span>` : ''}
                 </div>`
-              : ''}
+              : opp.stage === LOST_STAGE
+                ? html`<div class="next-action">
+                    <span class="next-action__label">Motivo de não ter fechado</span>
+                    <p>${opp.lostReason || 'Não anotado'}</p>
+                    ${allowed('commercial:edit') ? html`<button type="button" class="link-button" data-action="lost:ask" data-id="${opp.id}">${opp.lostReason ? 'Trocar motivo' : 'Anotar motivo'}</button>` : ''}
+                  </div>`
+                : ''}
             ${opp.clientId
               ? html`<a class="btn btn--secondary btn--block" href="#/clientes/${opp.clientId}">${icon('clients', 16)} Ver cliente</a>`
               : opp.stage === WON_STAGE || open
@@ -592,17 +699,7 @@ function renderDetail(opp: Opportunity): SafeHtml {
                 : ''}
           `,
         })}
-        ${panel({
-          title: 'Prospecção',
-          icon: 'send',
-          body: html`
-            <p class="muted small">Conta nas metas do Painel (contatos feitos e respostas por origem).</p>
-            <div class="milestones">
-              ${milestone(opp, 'contactedAt', 'Contato feito', 'Marcar contato feito hoje')}
-              ${milestone(opp, 'repliedAt', 'Respondeu', 'Marcar que respondeu hoje')}
-            </div>
-          `,
-        })}
+        ${contactPanel(opp)}
         ${panel({
           title: 'Propostas',
           icon: 'file',
@@ -620,16 +717,6 @@ function renderDetail(opp: Opportunity): SafeHtml {
   `;
 }
 
-function milestone(opp: Opportunity, field: 'contactedAt' | 'repliedAt', label: string, actionLabel: string): SafeHtml {
-  const date = opp[field];
-  return date
-    ? html`<div class="milestone is-done">
-        <span>${icon('check', 15)} ${label} · ${formatShortDate(date)}</span>
-        ${button({ label: 'Desfazer', action: 'opportunity:milestone', variant: 'ghost', size: 'sm', data: { id: opp.id, field, clear: '1' } })}
-      </div>`
-    : html`<div class="milestone">${button({ label: actionLabel, action: 'opportunity:milestone', icon: 'check', size: 'sm', data: { id: opp.id, field } })}</div>`;
-}
-
 // ---------------------------------------------------------------- Configurar etapas do funil
 
 function openStagesModal(): void {
@@ -639,7 +726,7 @@ function openStagesModal(): void {
   const counts = (id: string) => data.opportunities.filter((o) => o.stage === id).length;
   openModal({
     title: 'Etapas do funil',
-    description: 'As mudanças valem para os dois sócios. "Ganho" e "Perdido" ficam sempre no fim e contam nos resumos.',
+    description: 'Para cada etapa, diga de quem é a vez. "Nossa vez" pode ficar pendente; "Vez do cliente" nunca fica atrasada (o número de dias diz quando sugerir um follow-up, 0 = nunca); "Pausado" não gera alerta. As duas últimas etapas são finais.',
     size: 'lg',
     body: html`
       <ol class="stage-editor">
@@ -655,6 +742,18 @@ function openStagesModal(): void {
               : html`<select class="input select stage-editor__tone" aria-label="Cor da etapa ${s.label}" data-change="stage:tone" data-id="${s.id}">
                   ${STAGE_TONES.map((t) => html`<option value="${t.value}" ${t.value === s.tone ? 'selected' : ''}>${t.label}</option>`)}
                 </select>`}
+            ${final
+              ? html`<span></span><span></span>`
+              : html`<select class="input select stage-editor__kind" aria-label="De quem é a vez em ${s.label}" data-change="stage:kind" data-id="${s.id}">
+                  ${STAGE_KINDS.map((k) => html`<option value="${k.value}" ${k.value === (s.kind ?? 'nossa_vez') ? 'selected' : ''}>${k.label}</option>`)}
+                </select>
+                ${s.kind === 'vez_cliente'
+                  ? html`<label class="stage-editor__days" title="Depois de quantos dias sem resposta sugerir follow-up (0 = nunca)">
+                      <span class="visually-hidden">Dias para follow-up em ${s.label}</span>
+                      <input class="input" type="number" min="0" max="60" value="${s.followUpDays ?? DEFAULT_FOLLOW_UP_DAYS}" data-change="stage:days" data-id="${s.id}" />
+                      <small>dias</small>
+                    </label>`
+                  : html`<span></span>`}`}
             <span class="stage-editor__count" title="Oportunidades nesta etapa">${counts(s.id)}</span>
             <span class="stage-editor__actions">
               ${final
@@ -712,10 +811,13 @@ registerForms({
 
 export const commercialView: View = {
   title: (route: Route) =>
-    route.params[0] === 'propostas'
+    route.params[0] === 'relatorios'
+      ? 'Relatórios comerciais'
+      : route.params[0] === 'propostas'
       ? findProposal(store().data, route.params[1])?.title ?? 'Propostas'
       : findOpportunity(store().data, route.params[0])?.company ?? 'Comercial',
   render: (route: Route) => {
+    if (route.params[0] === 'relatorios') return renderReports();
     if (route.params[0] === 'propostas') {
       if (!route.params[1]) return renderProposals();
       const proposal = findProposal(store().data, route.params[1]);

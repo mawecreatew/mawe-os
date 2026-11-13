@@ -8,6 +8,8 @@
  */
 import { addMonths, isValidISODate, lastDayOfMonth, monthKey, monthLabel, shiftMonth, todayISO, type ISODate } from '../core/dates.ts';
 import { createId } from '../core/id.ts';
+import { logActivity } from './activity.ts';
+import { guessFollowUpDays, guessStageKind } from './commercial.ts';
 import { FINAL_STAGES, WON_STAGE, isOpenStage, stageLabel } from './labels.ts';
 import { fixFinalStages } from './normalize.ts';
 import { resolvePeople } from './people.ts';
@@ -138,9 +140,13 @@ export function createOpportunity(draft: AppData, input: OpportunityInput, ctx: 
     clientId: null,
     contactedAt: input.contactedAt ?? null,
     repliedAt: input.repliedAt ?? null,
+    contactLog: [],
+    lostReason: null,
+    closedAt: FINAL_STAGES.includes(input.stage) ? todayISO(ctx.now) : null,
     createdAt: ctx.now.toISOString(),
   };
   draft.opportunities.push(opportunity);
+  logActivity(draft, ctx, `cadastrou a oportunidade ${opportunity.company}`, `#/comercial/${opportunity.id}`);
   return opportunity;
 }
 
@@ -157,6 +163,13 @@ export function updateOpportunity(draft: AppData, id: ID, patch: Partial<Opportu
         ctx,
       ),
     );
+    // Data de fechamento: entra ao ir para Ganho/Perdido e sai se o lead for reaberto.
+    if (FINAL_STAGES.includes(patch.stage)) opp.closedAt = todayISO(ctx.now);
+    else {
+      opp.closedAt = null;
+      opp.lostReason = null;
+    }
+    logActivity(draft, ctx, `moveu ${opp.company} para "${stageLabel(draft, patch.stage)}"`, `#/comercial/${opp.id}`);
   }
 }
 
@@ -257,7 +270,9 @@ export function addPipelineStage(draft: AppData, label: string, tone: Tone = 'ne
   }
   let id = stageSlug(name);
   if (draft.pipelineStages.some((s) => s.id === id)) id = `${id}_${createId('x').slice(2, 7)}`;
-  const stage: PipelineStage = { id, label: name, tone: tone === 'success' || tone === 'danger' ? 'neutral' : tone };
+  const kind = guessStageKind(name);
+  const stage: PipelineStage = { id, label: name, tone: tone === 'success' || tone === 'danger' ? 'neutral' : tone, kind };
+  if (kind === 'vez_cliente') stage.followUpDays = guessFollowUpDays(name);
   const open = draft.pipelineStages.filter((s) => !FINAL_STAGES.includes(s.id));
   const index = afterId ? open.findIndex((s) => s.id === afterId) + 1 : open.length;
   open.splice(index > 0 ? index : open.length, 0, stage);
@@ -336,14 +351,38 @@ export function createClient(draft: AppData, input: ClientInput, ctx: ActionCont
     company: input.company.trim(),
     installments: [],
     pendingItems: [],
+    subscriptions: [],
+    links: [],
+    domain: null,
     createdAt: ctx.now.toISOString(),
   };
   draft.clients.push(client);
+  logActivity(draft, ctx, `cadastrou o cliente ${client.company}`, `#/clientes/${client.id}`);
   return client;
 }
 
 export function updateClient(draft: AppData, id: ID, patch: Partial<ClientInput>): void {
   Object.assign(mustFind(draft.clients, id, 'Cliente'), patch);
+}
+
+/** Link útil do cliente (site, Google Meu Negócio, pasta de artes). Nunca guarde senhas. */
+export function addClientLink(draft: AppData, clientId: ID, label: string, url: string): void {
+  const client = mustFind(draft.clients, clientId, 'Cliente');
+  const cleanUrl = url.trim();
+  if (!cleanUrl) throw new Error('Cole o endereço do link.');
+  if (/senha|password/i.test(label)) throw new Error('Não guarde senhas aqui. Use um gerenciador de senhas.');
+  (client.links ??= []).push({ id: createId('lnk'), label: label.trim() || cleanUrl, url: cleanUrl });
+}
+
+export function removeClientLink(draft: AppData, clientId: ID, linkId: ID): void {
+  const client = mustFind(draft.clients, clientId, 'Cliente');
+  client.links = (client.links ?? []).filter((l) => l.id !== linkId);
+}
+
+export function setClientDomain(draft: AppData, clientId: ID, name: string, renewsOn: ISODate | null): void {
+  const client = mustFind(draft.clients, clientId, 'Cliente');
+  if (renewsOn && !isValidISODate(renewsOn)) throw new Error('Data de renovação inválida.');
+  client.domain = name.trim() || renewsOn ? { name: name.trim(), renewsOn } : null;
 }
 
 export type InstallmentInput = Pick<Installment, 'description' | 'amount' | 'dueDate' | 'method'>;
