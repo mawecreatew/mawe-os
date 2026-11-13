@@ -1783,3 +1783,5 @@ kbd { padding: 1px 5px; border: 1px solid var(--line); border-radius: 4px; backg
 .stage-editor__days small { font-size: var(--text-xs); color: var(--text-3); }
 .stage-editor__row .select { padding-right: 26px; }
 .stage-editor__actions { min-width: 0; }
+
+.opp-card__since { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-xs); color: var(--text-3); }

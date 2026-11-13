@@ -128,7 +128,8 @@ function openOpportunityForm(opp?: Opportunity, stage?: OpportunityStage): void 
           ${financeEdit
             ? textField({ name: 'estimatedValue', label: 'Valor estimado (R$)', value: v.estimatedValue ?? '', inputmode: 'decimal', placeholder: 'Deixe vazio se ainda não souber' })
             : html`<div></div>`}
-          ${textField({ name: 'followUpDate', label: 'Lembrete / próxima ação', type: 'date', value: v.followUpDate ?? '', hint: 'Só vira "pendente" em etapas que dependem de vocês.' })}
+          ${textField({ name: 'contactedAt', label: 'Começamos a conversar em', type: 'date', value: v.contactedAt ?? '', hint: 'Dia do primeiro contato com o cliente.' })}
+          ${textField({ name: 'followUpDate', label: 'Data de acompanhamento', type: 'date', value: v.followUpDate ?? '', hint: 'Quando retomar o contato. Em etapas que esperam o cliente, nunca vira "atrasado".' })}
           ${textField({ name: 'nextAction', label: 'Próxima ação', value: v.nextAction, className: 'span-2' })}
         </div>
         ${textareaField({ name: 'notes', label: 'Observações', value: v.notes, rows: 3 })}
@@ -156,6 +157,7 @@ registerForms({
       estimatedValue: allowed('finance:edit') ? parseMoney(values.text('estimatedValue')) : (id ? findOpportunity(store().data, id)?.estimatedValue ?? null : null),
       nextAction: values.text('nextAction'),
       followUpDate: values.optional('followUpDate'),
+      contactedAt: values.optional('contactedAt'),
       ownerIds: readPeople(values, 'ownerIds'),
       notes: values.text('notes'),
     };
@@ -402,6 +404,7 @@ function opportunityCard(opp: Opportunity): SafeHtml {
     <span class="opp-card__sub">${[opp.segment, opp.source].filter(Boolean).join(' · ')} ${demoTag(opp)}</span>
     ${finance && opp.estimatedValue !== null ? html`<span class="opp-card__value">${formatCurrency(opp.estimatedValue)}</span>` : ''}
     ${open && opp.nextAction ? html`<span class="opp-card__next">${icon('arrowRight', 13)} ${opp.nextAction}</span>` : ''}
+    ${open && opp.contactedAt ? html`<span class="opp-card__since">${icon('chat', 12)} Conversando desde ${formatShortDate(opp.contactedAt)}</span>` : ''}
     ${open ? followChip(opp, t) : opp.stage === LOST_STAGE && opp.lostReason ? html`<span class="follow follow--neutral">${opp.lostReason}</span>` : ''}`;
 
   if (ui.selecting) {
@@ -632,6 +635,7 @@ function renderDetail(opp: Opportunity): SafeHtml {
               ${infoItem('Instagram', opp.contact.instagram)}
               ${infoItem(opp.ownerIds.length > 1 ? 'Responsáveis' : 'Responsável', people(data, opp.ownerIds))}
               ${finance ? infoItem('Valor estimado', opp.estimatedValue === null ? 'Ainda não definido' : formatCurrency(opp.estimatedValue)) : ''}
+              ${infoItem('Começamos a conversar', opp.contactedAt ? formatShortDate(opp.contactedAt) : 'Ainda não')}
               ${infoItem('Cadastrada em', formatShortDate(opp.createdAt.slice(0, 10)))}
             </dl>
             ${opp.notes ? html`<div class="note-block"><h3>Observações</h3><p>${multiline(opp.notes)}</p></div>` : ''}
