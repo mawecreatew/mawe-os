@@ -101,9 +101,10 @@ export function contactLog(opp: Opportunity): ContactLog[] {
 
 /** Contatos enviados por vocês. Dados antigos sem registro contam o "contato feito" como 1. */
 export function sentContacts(opp: Opportunity): Array<{ date: ISODate }> {
-  const log = contactLog(opp).filter((c) => c.direction === 'enviado');
-  if (log.length) return log;
-  return opp.contactedAt ? [{ date: opp.contactedAt }] : [];
+  const log: Array<{ date: ISODate }> = contactLog(opp).filter((c) => c.direction === 'enviado');
+  // "Começamos a conversar em" conta como um contato, se não houver registro nesse dia ou antes.
+  if (opp.contactedAt && !log.some((c) => c.date <= opp.contactedAt!)) return [{ date: opp.contactedAt }, ...log];
+  return log;
 }
 
 export function lastSentDate(opp: Opportunity): ISODate | null {

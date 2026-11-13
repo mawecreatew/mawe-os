@@ -146,6 +146,14 @@ describe('contatos e números do Comercial', () => {
     assert.equal(o.closedAt, null);
   });
 
+  it('"começamos a conversar em" conta como primeiro contato e mostra há quantos dias espera', () => {
+    const s = realFunnel();
+    const o = lead(s['Aguardando decisão'], { contactedAt: '2026-11-03' });
+    assert.equal(followStatus(data, o, TODAY).label, 'Aguardando há 10 dias');
+    logContact(data, o.id, { date: TODAY, channel: 'whatsapp', direction: 'enviado', note: '' }, ctx);
+    assert.equal(followStatus(data, o, TODAY).attempts, 2, 'o dia 03 e a mensagem de hoje');
+  });
+
   it('monta o link do WhatsApp com 55 e a mensagem', () => {
     assert.equal(whatsappLink('(47) 99208-0000', 'Oi'), 'https://wa.me/5547992080000?text=Oi');
     assert.equal(whatsappLink('123', 'Oi'), null);
