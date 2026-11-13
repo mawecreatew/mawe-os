@@ -3,6 +3,7 @@
  * As telas usam estas funções; os testes também.
  */
 import { diffInDays, type ISODate } from '../core/dates.ts';
+import { needsAction } from './commercial.ts';
 import { LOST_STAGE, WON_STAGE, isOpenStage, pipelineStages } from './labels.ts';
 import { peopleNames } from './people.ts';
 import type {
@@ -233,7 +234,8 @@ export function pipelineSummary(data: AppData, today: ISODate): PipelineSummary 
       summary.openCount++;
       if (o.estimatedValue === null) summary.withoutValue++;
       else summary.openValue += o.estimatedValue;
-      if (o.followUpDate !== null && o.followUpDate <= today) summary.followUpsDue++;
+      // Só conta o que depende de vocês (lead esperando o cliente não é "retorno pendente").
+      if (needsAction(data, o, today)) summary.followUpsDue++;
     }
   }
   return summary;

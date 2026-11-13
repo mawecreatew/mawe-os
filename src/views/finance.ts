@@ -1,13 +1,23 @@
 /** Financeiro: tudo que entra e sai da conta da agência, despesas recorrentes e resumo do mês. */
-import { formatShortDate, monthKey, monthLabel, relativeDay, shiftMonth } from '../core/dates.ts';
+import { addDays, formatShortDate, monthKey, monthLabel, relativeDay, shiftMonth, type ISODate } from '../core/dates.ts';
 import { registerActions, registerForms } from '../core/events.ts';
 import { formatCurrency, parseMoney, pluralize } from '../core/format.ts';
 import { cx, html, type SafeHtml } from '../core/html.ts';
 import {
+  cashPosition,
   deleteFinanceEntry,
   deleteRecurring,
+  deleteReserve,
+  financeMovements,
   isWithdrawal,
+  monthByMonth,
   monthMovements,
+  moveReserve,
+  paySubscription,
+  periodRange,
+  reserveBalances,
+  saveReserve,
+  setOpeningBalance,
   payRecurringOccurrence,
   recurringDates,
   saveFinanceEntry,
@@ -20,7 +30,8 @@ import {
   type Movement,
   type RecurringInput,
 } from '../domain/finance.ts';
-import { CLIENT_INCOME_CATEGORY, EXPENSE_CATEGORIES, INCOME_CATEGORIES, WITHDRAWAL_CATEGORY } from '../domain/labels.ts';
+import { CLIENT_INCOME_CATEGORY, WITHDRAWAL_CATEGORY } from '../domain/labels.ts';
+import { categoryNames } from '../domain/categories.ts';
 import { toggleInstallmentPaid } from '../domain/operations.ts';
 import { teamMembers } from '../domain/people.ts';
 import type { AppData, FinanceEntry, Payer, RecurringExpense } from '../domain/types.ts';
@@ -31,12 +42,35 @@ import { formActions, selectField, textareaField, textField } from '../ui/forms.
 import { icon } from '../ui/icons.ts';
 import { closeModal, confirmAction, openModal, toast } from '../ui/overlay.ts';
 
+type FinancePeriod = 'mes' | '7d' | '30d' | '12m' | 'tudo';
+
 const ui = {
   month: null as string | null,
+  period: 'mes' as FinancePeriod,
   category: '',
   kind: 'todos' as 'todos' | 'entrada' | 'saida',
-  tab: 'movimentos' as 'movimentos' | 'recorrentes',
+  tab: 'movimentos' as 'movimentos' | 'meses' | 'recorrentes' | 'reservas',
 };
+
+const PERIODS: Array<{ value: FinancePeriod; label: string }> = [
+  { value: 'mes', label: 'Mês' },
+  { value: '7d', label: '7 dias' },
+  { value: '30d', label: '30 dias' },
+  { value: '12m', label: '12 meses' },
+  { value: 'tudo', label: 'Desde o início' },
+];
+
+/** Intervalo dos lançamentos mostrados: o mês escolhido ou um período até hoje. */
+function currentRange(): { from: ISODate; to: ISODate; label: string } {
+  const t = today();
+  if (ui.period === 'mes') {
+    const month = currentMonthKey();
+    return { from: `${month}-01`, to: `${month}-31`, label: monthLabel(month) };
+  }
+  if (ui.period === 'tudo') return { from: cashPosition(store().data, t).since, to: addDays(t, 31), label: 'desde o início' };
+  const range = periodRange(ui.period, t);
+  return { ...range, label: PERIODS.find((p) => p.value === ui.period)!.label.toLowerCase() };
+}
 
 function currentMonthKey(): string {
   return ui.month ?? monthKey(today());
@@ -61,12 +95,12 @@ function openEntryForm(kind: 'entrada' | 'saida', entry?: FinanceEntry): void {
     amount: 0,
     dueDate: today(),
     paidAt: null,
-    category: kind === 'saida' ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0],
+    category: categoryNames(data, kind === 'saida' ? 'despesa' : 'receita')[0] ?? 'Outros',
     paidBy: 'agencia',
     clientId: null,
     notes: '',
   };
-  const categories = [...new Set([...(v.kind === 'saida' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES), v.category])].filter((c) => c !== WITHDRAWAL_CATEGORY);
+  const categories = categoryNames(data, v.kind === 'saida' ? 'despesa' : 'receita', v.category).filter((c) => c !== WITHDRAWAL_CATEGORY);
   openModal({
     title: entry ? 'Editar lançamento' : v.kind === 'saida' ? 'Nova despesa' : 'Nova entrada avulsa',
     description: v.kind === 'entrada' && !entry ? 'Pagamentos de clientes já aparecem sozinhos (vêm das parcelas em Clientes). Use aqui para outras entradas.' : undefined,
@@ -141,7 +175,7 @@ function openRecurringForm(rec?: RecurringExpense): void {
           ${textField({ name: 'amount', label: 'Valor (R$)', value: rec ? String(v.amount).replace('.', ',') : '', required: true, inputmode: 'decimal' })}
           ${selectField({ name: 'frequency', label: 'Repete', value: v.frequency, options: [{ value: 'mensal', label: 'Todo mês' }, { value: 'anual', label: 'Todo ano' }] })}
           ${textField({ name: 'startDate', label: 'Primeiro vencimento', type: 'date', value: v.startDate, required: true, hint: 'Os próximos caem no mesmo dia.' })}
-          ${selectField({ name: 'category', label: 'Categoria', value: v.category, options: [...new Set([...EXPENSE_CATEGORIES, v.category])].map((c) => ({ value: c, label: c })) })}
+          ${selectField({ name: 'category', label: 'Categoria', value: v.category, options: categoryNames(data, 'despesa', v.category).map((c) => ({ value: c, label: c })) })}
           ${selectField({ name: 'paidBy', label: 'Quem paga', value: v.paidBy, options: payerOptions(data) })}
           ${selectField({ name: 'active', label: 'Situação', value: v.active ? 'sim' : 'nao', options: [{ value: 'sim', label: 'Ativa' }, { value: 'nao', label: 'Pausada (não gera vencimentos)' }] })}
         </div>
@@ -157,7 +191,77 @@ function readAmount(text: string): number {
   return amount;
 }
 
+function openOpeningForm(): void {
+  const current = store().data.finance.openingBalance;
+  openModal({
+    title: 'Saldo inicial da conta',
+    description: 'Quanto já tinha na conta da agência antes de vocês começarem a lançar no sistema. Deixe zero se começaram do zero.',
+    body: html`
+      <form class="form" data-form="finance:opening">
+        <div class="form-grid">
+          ${textField({ name: 'amount', label: 'Valor (R$)', value: current ? String(current.amount).replace('.', ',') : '', inputmode: 'decimal', autofocus: true, placeholder: '0,00' })}
+          ${textField({ name: 'date', label: 'Em que dia', type: 'date', value: current?.date ?? '2026-10-01', required: true })}
+        </div>
+        ${formActions('Salvar saldo inicial')}
+      </form>`,
+  });
+}
+
+function openReserveForm(id?: string): void {
+  const reserve = store().data.finance.reserves?.find((r) => r.id === id);
+  openModal({
+    title: reserve ? 'Editar reserva' : 'Nova reserva',
+    description: 'Uma "caixinha" dentro do caixa: o dinheiro continua na conta, mas fica separado para um fim (ex.: ferramentas, impostos, equipamento).',
+    body: html`
+      <form class="form" data-form="reserve:save" data-id="${reserve?.id ?? ''}">
+        <div class="form-grid">
+          ${textField({ name: 'name', label: 'Nome', value: reserve?.name ?? '', required: true, autofocus: true, placeholder: 'Ex.: Ferramentas (Canva, Claude)' })}
+          ${textField({ name: 'goal', label: 'Meta (opcional, R$)', value: reserve?.goal ? String(reserve.goal).replace('.', ',') : '', inputmode: 'decimal' })}
+        </div>
+        ${formActions(reserve ? 'Salvar' : 'Criar reserva')}
+      </form>`,
+  });
+}
+
+function openReserveMoveForm(id: string, direction: 1 | -1): void {
+  const reserve = store().data.finance.reserves?.find((r) => r.id === id);
+  if (!reserve) return;
+  openModal({
+    title: direction > 0 ? `Guardar em "${reserve.name}"` : `Tirar de "${reserve.name}"`,
+    body: html`
+      <form class="form" data-form="reserve:move" data-id="${reserve.id}" data-direction="${direction}">
+        <div class="form-grid">
+          ${textField({ name: 'amount', label: 'Valor (R$)', required: true, inputmode: 'decimal', autofocus: true })}
+          ${textField({ name: 'date', label: 'Data', type: 'date', value: today(), required: true })}
+        </div>
+        ${textField({ name: 'note', label: 'Anotação (opcional)', placeholder: direction > 0 ? 'Ex.: sobra de novembro' : 'Ex.: assinatura do Canva Pro' })}
+        ${formActions(direction > 0 ? 'Guardar' : 'Tirar')}
+      </form>`,
+  });
+}
+
 registerForms({
+  'finance:opening': async (_form, values) => {
+    requirePermission('finance:edit');
+    const amount = parseMoney(values.text('amount'));
+    await store().apply((draft) => setOpeningBalance(draft, amount, values.text('date')));
+    closeModal();
+    toast('Saldo inicial salvo.');
+  },
+  'reserve:save': async (form, values) => {
+    requirePermission('finance:edit');
+    const goal = parseMoney(values.text('goal'));
+    await store().apply((draft, ctx) => saveReserve(draft, form.dataset.id || null, { name: values.text('name'), goal }, ctx));
+    closeModal();
+    toast('Reserva salva.');
+  },
+  'reserve:move': async (form, values) => {
+    requirePermission('finance:edit');
+    const amount = readAmount(values.text('amount')) * Number(form.dataset.direction);
+    await store().apply((draft, ctx) => moveReserve(draft, form.dataset.id!, amount, values.text('date'), values.text('note'), ctx));
+    closeModal();
+    toast(amount > 0 ? 'Valor guardado na reserva.' : 'Valor tirado da reserva.');
+  },
   'finance:save': async (form, values) => {
     requirePermission('finance:edit');
     const kind = form.dataset.kind as 'entrada' | 'saida';
@@ -222,9 +326,10 @@ registerForms({
 /** Marca/desmarca um movimento como pago, seja qual for a origem. */
 async function toggleMovement(key: string): Promise<void> {
   requirePermission('finance:edit');
-  const [source, a, b] = key.split(':');
+  const [source, a, b, c] = key.split(':');
   const t = today();
-  if (source === 'e') await store().apply((draft) => toggleFinanceEntryPaid(draft, a, t));
+  if (source === 's') await store().apply((draft, ctx) => paySubscription(draft, a, b, c, t, ctx));
+  else if (source === 'e') await store().apply((draft) => toggleFinanceEntryPaid(draft, a, t));
   else if (source === 'r') await store().apply((draft, ctx) => payRecurringOccurrence(draft, a, b, t, ctx));
   else if (source === 'i') {
     const client = store().data.clients.find((c) => c.installments.some((i) => i.id === a));
@@ -234,6 +339,22 @@ async function toggleMovement(key: string): Promise<void> {
 
 registerActions({
   'finance:new-in': () => openEntryForm('entrada'),
+  'finance:opening': () => openOpeningForm(),
+  'finance:period': (el) => {
+    ui.period = el.dataset.value as FinancePeriod;
+    rerender();
+  },
+  'reserve:new': () => openReserveForm(),
+  'reserve:edit': (el) => openReserveForm(el.dataset.id),
+  'reserve:in': (el) => openReserveMoveForm(el.dataset.id!, 1),
+  'reserve:out': (el) => openReserveMoveForm(el.dataset.id!, -1),
+  'reserve:delete': async (el) => {
+    requirePermission('finance:edit');
+    const ok = await confirmAction({ title: 'Excluir reserva', text: 'O dinheiro separado volta a contar como livre no caixa. Nada sai da conta.', confirmLabel: 'Excluir' });
+    if (!ok) return;
+    await store().apply((draft) => deleteReserve(draft, el.dataset.id!));
+    toast('Reserva excluída.');
+  },
   'finance:new-out': () => openEntryForm('saida'),
   'finance:new-recurring': () => openRecurringForm(),
   'finance:new-withdrawal': () => openWithdrawalForm(),
@@ -313,7 +434,11 @@ function movementRow(data: AppData, m: Movement): SafeHtml {
       <span class="movement__title">${m.description} ${entry ? demoTag(entry) : ''}</span>
       <span class="movement__meta">
         ${m.category}
-        ${m.source === 'installment' ? html` · <a href="#/clientes/${m.clientId}">parcela em Clientes</a>` : client ? html` · <a href="#/clientes/${client.id}">${client.company}</a>` : ''}
+        ${m.source === 'installment'
+          ? html` · <a href="#/clientes/${m.clientId}">parcela em Clientes</a>`
+          : m.subscriptionId
+            ? html` · ${icon('repeat', 12)} <a href="#/clientes/${m.clientId}">plano mensal</a>`
+            : client ? html` · <a href="#/clientes/${client.id}">${client.company}</a>` : ''}
         ${m.recurringId ? html` · ${icon('repeat', 12)} recorrente` : ''}
         ${withdrawal
           ? html` · ${badge(`Para: ${payerName(data, m.paidBy)}`, 'accent')}`
@@ -335,7 +460,9 @@ function movementRow(data: AppData, m: Movement): SafeHtml {
 
 function renderMovements(data: AppData): SafeHtml {
   const month = currentMonthKey();
-  const all = monthMovements(data, month, ui.category || undefined);
+  const range = currentRange();
+  const isMonth = ui.period === 'mes';
+  const all = (isMonth ? monthMovements(data, month, ui.category || undefined) : financeMovements(data, range.from, range.to).filter((m) => !ui.category || m.category === ui.category));
   const list = ui.kind === 'todos' ? all : all.filter((m) => m.kind === ui.kind);
   const s = summarizeMovements(all);
   const partners = Object.entries(s.paidByPartner);
@@ -346,12 +473,15 @@ function renderMovements(data: AppData): SafeHtml {
 
   return html`
     <div class="toolbar">
-      <div class="period-nav">
-        ${button({ label: 'Mês anterior', iconOnly: true, icon: 'arrowLeft', action: 'finance:prev' })}
-        <strong class="period-nav__label">${monthLabel(month)}</strong>
-        ${button({ label: 'Próximo mês', iconOnly: true, icon: 'arrowRight', action: 'finance:next' })}
-        ${month !== monthKey(t) ? button({ label: 'Mês atual', action: 'finance:this-month', size: 'sm', variant: 'ghost' }) : ''}
-      </div>
+      ${segmented({ label: 'Período', action: 'finance:period', value: ui.period, items: PERIODS })}
+      ${isMonth
+        ? html`<div class="period-nav">
+            ${button({ label: 'Mês anterior', iconOnly: true, icon: 'arrowLeft', action: 'finance:prev' })}
+            <strong class="period-nav__label">${monthLabel(month)}</strong>
+            ${button({ label: 'Próximo mês', iconOnly: true, icon: 'arrowRight', action: 'finance:next' })}
+            ${month !== monthKey(t) ? button({ label: 'Mês atual', action: 'finance:this-month', size: 'sm', variant: 'ghost' }) : ''}
+          </div>`
+        : ''}
       ${segmented({ label: 'Tipo', action: 'finance:kind', value: ui.kind, items: [{ value: 'todos', label: 'Tudo' }, { value: 'entrada', label: 'Entradas' }, { value: 'saida', label: 'Saídas' }] })}
       <label class="toolbar__select">
         <span class="visually-hidden">Categoria</span>
@@ -365,17 +495,19 @@ function renderMovements(data: AppData): SafeHtml {
     <div class="stats stats--3">
       ${statCard({ label: 'Entrou', value: formatCurrency(s.received, true), hint: s.toReceive ? `+ ${formatCurrency(s.toReceive, true)} a receber` : 'Nada pendente a receber', tone: 'success' })}
       ${statCard({ label: 'Despesas', value: formatCurrency(s.paid, true), hint: s.toPay ? `+ ${formatCurrency(s.toPay, true)} a pagar` : 'Nada pendente a pagar' })}
-      ${statCard({ label: 'Lucro do mês', value: formatCurrency(s.profit, true), hint: 'Entrou − despesas', tone: s.profit < 0 ? 'danger' : 'success' })}
+      ${statCard({ label: isMonth ? 'Lucro do mês' : 'Lucro do período', value: formatCurrency(s.profit, true), hint: 'Entrou − despesas', tone: s.profit < 0 ? 'danger' : 'success' })}
       ${statCard({
         label: 'Retirado pelos sócios',
         value: formatCurrency(s.withdrawn, true),
         hint: withdrawnBy.length
           ? withdrawnBy.map(([id, value]) => `${payerName(data, id)}: ${formatCurrency(value, true)}`).join(' · ') + (s.toWithdraw ? ` · + ${formatCurrency(s.toWithdraw, true)} combinado` : '')
-          : s.toWithdraw ? `${formatCurrency(s.toWithdraw, true)} combinado` : 'Nenhuma retirada no mês',
+          : s.toWithdraw ? `${formatCurrency(s.toWithdraw, true)} combinado` : isMonth ? 'Nenhuma retirada no mês' : 'Nenhuma retirada no período',
         tone: 'accent',
       })}
-      ${statCard({ label: 'Ficou no caixa', value: formatCurrency(s.balance, true), hint: 'Lucro − retiradas', tone: s.balance < 0 ? 'danger' : undefined })}
-      ${statCard({ label: 'Previsto até o fim do mês', value: formatCurrency(s.balance + s.toReceive - s.toPay - s.toWithdraw, true), hint: 'Se tudo for pago, recebido e retirado' })}
+      ${statCard({ label: isMonth ? 'Sobrou no mês' : 'Sobrou no período', value: formatCurrency(s.balance, true), hint: 'Lucro − retiradas', tone: s.balance < 0 ? 'danger' : undefined })}
+      ${isMonth
+        ? statCard({ label: 'Previsto até o fim do mês', value: formatCurrency(s.balance + s.toReceive - s.toPay - s.toWithdraw, true), hint: 'Se tudo for pago, recebido e retirado' })
+        : statCard({ label: 'Pendente no período', value: formatCurrency(s.toReceive - s.toPay, true), hint: `${formatCurrency(s.toReceive, true)} a receber · ${formatCurrency(s.toPay, true)} a pagar` })}
     </div>
 
     ${overdue.length
@@ -386,13 +518,94 @@ function renderMovements(data: AppData): SafeHtml {
       : ''}
 
     ${panel({
-      title: 'Lançamentos do mês',
+      title: isMonth ? 'Lançamentos do mês' : `Lançamentos · ${range.label}`,
       icon: 'wallet',
       count: list.length,
       body: list.length
         ? html`<ul class="movements">${list.map((m) => movementRow(data, m))}</ul>`
-        : emptyState({ icon: 'wallet', compact: true, title: 'Nada lançado neste mês', text: 'Registre despesas e entradas avulsas. Os pagamentos de clientes aparecem sozinhos.' }),
+        : emptyState({ icon: 'wallet', compact: true, title: isMonth ? 'Nada lançado neste mês' : 'Nada lançado neste período', text: 'Registre despesas e entradas avulsas. Os pagamentos de clientes e os planos mensais aparecem sozinhos.' }),
     })}
+  `;
+}
+
+/** Faixa do topo: quanto tem na conta hoje, somando todos os meses. */
+function renderCash(data: AppData): SafeHtml {
+  const cash = cashPosition(data, today());
+  const canEdit = allowed('finance:edit');
+  return html`<section class="cash-bar">
+    <div class="cash-bar__main">
+      <span class="cash-bar__label">${icon('wallet', 15)} Caixa atual da agência</span>
+      <strong class="${cx('cash-bar__value', cash.balance < 0 && 'text-danger')}">${formatCurrency(cash.balance, true)}</strong>
+      <span class="cash-bar__hint">Soma de todos os meses desde ${formatShortDate(cash.since)}${cash.opening ? ` · com saldo inicial de ${formatCurrency(cash.opening, true)}` : ''}</span>
+    </div>
+    <dl class="cash-bar__parts">
+      <div><dt>Entrou</dt><dd class="text-success">+ ${formatCurrency(cash.received, true)}</dd></div>
+      <div><dt>Despesas pela conta</dt><dd>− ${formatCurrency(cash.paid, true)}</dd></div>
+      <div><dt>Retiradas</dt><dd>− ${formatCurrency(cash.withdrawn, true)}</dd></div>
+      ${cash.reserved ? html`<div><dt>Em reservas</dt><dd>${formatCurrency(cash.reserved, true)}</dd></div><div><dt>Livre para usar</dt><dd><strong>${formatCurrency(cash.free, true)}</strong></dd></div>` : ''}
+    </dl>
+    ${canEdit ? html`<button type="button" class="link-button cash-bar__link" data-action="finance:opening">${cash.opening ? 'Editar saldo inicial' : 'Já tinha dinheiro antes? Informe o saldo inicial'}</button>` : ''}
+  </section>`;
+}
+
+function renderMonths(data: AppData): SafeHtml {
+  const rows = monthByMonth(data, today());
+  const max = Math.max(1, ...rows.map((r) => Math.max(r.received, r.paid)));
+  return html`
+    <p class="section-intro">Cada mês: o que entrou, o que saiu e quanto ficou. A última coluna é o caixa acumulado no fim de cada mês, somando tudo desde o início.</p>
+    ${rows.length
+      ? html`<div class="table-wrap"><table class="table">
+          <thead><tr><th>Mês</th><th class="num">Entrou</th><th class="num">Despesas</th><th class="num">Retiradas</th><th class="num">Sobrou</th><th class="num">Caixa no fim do mês</th></tr></thead>
+          <tbody>${[...rows].reverse().map(
+            (r) => html`<tr>
+              <td class="cell-main">${monthLabel(r.month)}<span class="month-bars" aria-hidden="true"><i class="month-bars__in" style="width: ${Math.round((r.received / max) * 100)}%"></i><i class="month-bars__out" style="width: ${Math.round((r.paid / max) * 100)}%"></i></span></td>
+              <td data-label="Entrou" class="num text-success">${formatCurrency(r.received, true)}</td>
+              <td data-label="Despesas" class="num">${formatCurrency(r.paid, true)}</td>
+              <td data-label="Retiradas" class="num">${formatCurrency(r.withdrawn, true)}</td>
+              <td data-label="Sobrou" class="${cx('num', r.result < 0 ? 'text-danger' : 'text-success')}">${r.result >= 0 ? '+' : '−'} ${formatCurrency(Math.abs(r.result), true)}</td>
+              <td data-label="Caixa" class="num"><strong>${formatCurrency(r.cumulative, true)}</strong></td>
+            </tr>`,
+          )}</tbody>
+          <tfoot><tr><td>Total</td>
+            <td class="num">${formatCurrency(rows.reduce((s, r) => s + r.received, 0), true)}</td>
+            <td class="num">${formatCurrency(rows.reduce((s, r) => s + r.paid, 0), true)}</td>
+            <td class="num">${formatCurrency(rows.reduce((s, r) => s + r.withdrawn, 0), true)}</td>
+            <td class="num">${formatCurrency(rows.reduce((s, r) => s + r.result, 0), true)}</td>
+            <td class="num"><strong>${formatCurrency(rows[rows.length - 1].cumulative, true)}</strong></td></tr></tfoot>
+        </table></div>`
+      : html`<div class="panel">${emptyState({ icon: 'wallet', title: 'Nenhum mês com movimento ainda' })}</div>`}
+  `;
+}
+
+function renderReserves(data: AppData): SafeHtml {
+  const list = reserveBalances(data);
+  const cash = cashPosition(data, today());
+  const canEdit = allowed('finance:edit');
+  return html`
+    <p class="section-intro">Reservas separam parte do caixa para um fim, sem tirar da conta. Livre para usar agora: <strong>${formatCurrency(cash.free, true)}</strong>.</p>
+    ${list.length
+      ? html`<div class="reserve-grid">${list.map(({ reserve, balance }) => {
+          const pct = reserve.goal ? Math.min(100, Math.round((balance / reserve.goal) * 100)) : null;
+          const moves = (data.finance.reserveMoves ?? []).filter((m) => m.reserveId === reserve.id).slice(-3).reverse();
+          return html`<article class="reserve-card">
+            <header class="reserve-card__head">
+              <span class="reserve-card__icon">${icon('piggy', 18)}</span>
+              <strong>${reserve.name}</strong>
+              ${canEdit ? html`<span class="button-row">${button({ label: 'Editar', iconOnly: true, icon: 'edit', variant: 'ghost', size: 'sm', action: 'reserve:edit', data: { id: reserve.id } })}${button({ label: 'Excluir', iconOnly: true, icon: 'trash', variant: 'ghost', size: 'sm', action: 'reserve:delete', data: { id: reserve.id } })}</span>` : ''}
+            </header>
+            <p class="reserve-card__value">${formatCurrency(balance, true)}${reserve.goal ? html` <small>de ${formatCurrency(reserve.goal, true)}</small>` : ''}</p>
+            ${pct !== null ? html`<div class="progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span class="progress__bar" style="width: ${pct}%"></span></div>` : ''}
+            ${moves.length ? html`<ul class="reserve-card__moves">${moves.map((m) => html`<li><span>${m.note || (m.amount > 0 ? 'Guardado' : 'Retirado')}</span><span class="${m.amount > 0 ? 'text-success' : ''}">${m.amount > 0 ? '+' : '−'} ${formatCurrency(Math.abs(m.amount), true)}</span></li>`)}</ul>` : ''}
+            ${canEdit ? html`<footer class="button-row">${button({ label: 'Guardar', action: 'reserve:in', icon: 'plus', size: 'sm', data: { id: reserve.id } })}${balance > 0 ? button({ label: 'Tirar', action: 'reserve:out', size: 'sm', variant: 'ghost', data: { id: reserve.id } }) : ''}</footer>` : ''}
+          </article>`;
+        })}</div>`
+      : html`<div class="panel">${emptyState({
+          icon: 'piggy',
+          title: 'Nenhuma reserva ainda',
+          text: 'Ex.: "Ferramentas" para pagar Canva e Claude, ou "Impostos" para o MEI.',
+          action: canEdit ? button({ label: 'Nova reserva', action: 'reserve:new', variant: 'primary', icon: 'plus' }) : undefined,
+        })}</div>`}
+    ${list.length && canEdit ? button({ label: 'Nova reserva', action: 'reserve:new', icon: 'plus' }) : ''}
   `;
 }
 
@@ -457,12 +670,15 @@ export const financeView: View = {
           value: ui.tab,
           items: [
             { value: 'movimentos', label: 'Entradas e saídas', icon: 'wallet' },
+            { value: 'meses', label: 'Mês a mês', icon: 'chart' },
             { value: 'recorrentes', label: 'Despesas recorrentes', icon: 'repeat', count: data.finance.recurring.filter((r) => r.active).length },
+            { value: 'reservas', label: 'Reservas', icon: 'piggy', count: (data.finance.reserves ?? []).length },
           ],
         })}
       </div>
-      ${ui.tab === 'movimentos' ? renderMovements(data) : renderRecurring(data)}
-      <p class="muted small">${icon('info', 13)} Pagamentos de clientes vêm das parcelas em Clientes (categoria "${CLIENT_INCOME_CATEGORY}"). Marcar aqui ou lá dá no mesmo.</p>
+      ${renderCash(data)}
+      ${ui.tab === 'movimentos' ? renderMovements(data) : ui.tab === 'meses' ? renderMonths(data) : ui.tab === 'reservas' ? renderReserves(data) : renderRecurring(data)}
+      <p class="muted small">${icon('info', 13)} Pagamentos de clientes vêm das parcelas e dos planos mensais em Clientes (categorias "${CLIENT_INCOME_CATEGORY}" e "Plano mensal"). Marcar aqui ou lá dá no mesmo. As categorias de despesa e entrada podem ser editadas em <a href="#/categorias/despesa">Categorias</a>.</p>
     `;
   },
 };

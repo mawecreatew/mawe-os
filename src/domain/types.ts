@@ -35,10 +35,39 @@ export type OpportunityStage = string;
 
 export type Tone = 'neutral' | 'info' | 'progress' | 'warning' | 'success' | 'danger' | 'accent';
 
+/**
+ * De quem é a vez numa etapa do funil. Decide se o sistema cobra uma ação:
+ * - `nossa_vez`: depende de vocês (pode ficar pendente);
+ * - `vez_cliente`: vocês já fizeram a parte de vocês e esperam o cliente (nunca fica "atrasada");
+ * - `pausado`: lead para depois (ex.: interessado no futuro), sem alerta nenhum.
+ * As etapas finais (ganho e perdido) não usam esse campo.
+ */
+export type StageKind = 'nossa_vez' | 'vez_cliente' | 'pausado';
+
 export interface PipelineStage {
   id: OpportunityStage;
   label: string;
   tone: Tone;
+  kind?: StageKind;
+  /**
+   * Só em `vez_cliente`: depois de quantos dias sem resposta o sistema sugere
+   * um follow-up. `0` = nunca sugere.
+   */
+  followUpDays?: number;
+}
+
+export type ContactChannel = 'whatsapp' | 'audio' | 'ligacao' | 'visita' | 'instagram' | 'email' | 'outro';
+
+/** Um contato com o lead: mensagem enviada por vocês ou resposta do cliente. */
+export interface ContactLog {
+  id: ID;
+  date: ISODate;
+  channel: ContactChannel;
+  /** `enviado` = vocês falaram com o cliente; `recebido` = o cliente respondeu. */
+  direction: 'enviado' | 'recebido';
+  note: string;
+  authorId: ID;
+  at: Timestamp;
 }
 
 export interface HistoryEntry {
@@ -75,6 +104,12 @@ export interface Opportunity {
   contactedAt?: ISODate | null;
   /** Dia em que a empresa respondeu ao contato. */
   repliedAt?: ISODate | null;
+  /** Todos os contatos feitos e respostas recebidas (alimenta os números do Comercial). */
+  contactLog?: ContactLog[];
+  /** Por que não fechou (categoria de "Motivos de perda"). */
+  lostReason?: string | null;
+  /** Dia em que entrou em Ganho ou Perdido. */
+  closedAt?: ISODate | null;
   createdAt: Timestamp;
   isDemo?: boolean;
 }
@@ -98,6 +133,29 @@ export interface ChecklistItem {
   done: boolean;
 }
 
+/** Plano mensal contratado pelo cliente (ex.: Plano Essencial). Gera a cobrança de cada mês sozinho. */
+export interface Subscription {
+  id: ID;
+  name: string;
+  serviceId: ID | null;
+  amount: number;
+  /** Dia do mês do vencimento. */
+  billingDay: number;
+  /** Primeiro mês cobrado (AAAA-MM). */
+  startMonth: string;
+  /** Último mês cobrado (AAAA-MM). `null` = sem fim. */
+  endMonth: string | null;
+  active: boolean;
+  createdAt: Timestamp;
+}
+
+/** Link útil do cliente (site, Google Meu Negócio, pasta de artes...). Nunca guarde senhas aqui. */
+export interface ClientLink {
+  id: ID;
+  label: string;
+  url: string;
+}
+
 export interface Client {
   id: ID;
   company: string;
@@ -110,6 +168,10 @@ export interface Client {
   pendingItems: ChecklistItem[];
   nextStep: string;
   notes: string;
+  subscriptions?: Subscription[];
+  links?: ClientLink[];
+  /** Domínio do site e quando renova (aparece no Foco de hoje 30 dias antes). */
+  domain?: { name: string; renewsOn: ISODate | null } | null;
   createdAt: Timestamp;
   isDemo?: boolean;
 }
@@ -197,6 +259,8 @@ export interface FinanceEntry {
   clientId: ID | null;
   /** Ocorrência gerada a partir de uma despesa recorrente. */
   recurringId: ID | null;
+  /** Pagamento de um plano mensal de cliente (`Client.subscriptions`). */
+  subscriptionId?: ID | null;
   notes: string;
   createdAt: Timestamp;
   isDemo?: boolean;
@@ -216,9 +280,32 @@ export interface RecurringExpense {
   isDemo?: boolean;
 }
 
+/** Reserva (caixinha): parte do caixa separada para um fim, como ferramentas. */
+export interface Reserve {
+  id: ID;
+  name: string;
+  /** Quanto querem juntar (opcional). */
+  goal: number | null;
+  createdAt: Timestamp;
+}
+
+/** Dinheiro guardado (+) ou tirado (−) de uma reserva. Não sai da conta: só muda de "gaveta". */
+export interface ReserveMove {
+  id: ID;
+  reserveId: ID;
+  amount: number;
+  date: ISODate;
+  note: string;
+  createdAt: Timestamp;
+}
+
 export interface FinanceData {
   entries: FinanceEntry[];
   recurring: RecurringExpense[];
+  /** Quanto já havia na conta antes de começar a usar o sistema. */
+  openingBalance?: { amount: number; date: ISODate } | null;
+  reserves?: Reserve[];
+  reserveMoves?: ReserveMove[];
 }
 
 // ---------------------------------------------------------------- Calendário de conteúdo
@@ -266,7 +353,8 @@ export interface Campaign {
 
 // ---------------------------------------------------------------- Serviços e preços
 
-export type ServiceCategory = 'site' | 'sistema' | 'conteudo' | 'trafego' | 'plano_mensal' | 'outro';
+/** Id de uma categoria de serviço (as categorias são editáveis em Categorias). */
+export type ServiceCategory = string;
 
 export interface Service {
   id: ID;
@@ -278,6 +366,12 @@ export interface Service {
   /** Prazo médio de entrega, em dias úteis. */
   deliveryDays: number | null;
   active: boolean;
+  /** Preço promocional (ex.: Black Friday) e até quando vale. */
+  promoPrice?: number | null;
+  promoUntil?: ISODate | null;
+  promoLabel?: string;
+  /** Pacote: serviços do catálogo que vêm juntos. */
+  packageItems?: ID[];
   isDemo?: boolean;
 }
 
@@ -325,6 +419,32 @@ export interface MonthlyGoals {
   contacts: number | null;
   proposalsSent: number | null;
   proposalsAccepted: number | null;
+  /** Meta diária de contatos de prospecção (por dia útil). */
+  dailyContacts?: number | null;
+}
+
+// ---------------------------------------------------------------- Categorias
+
+/** Listas que os sócios podem editar. */
+export type CategoryGroup = 'servico' | 'despesa' | 'receita' | 'origem' | 'segmento' | 'motivo_perda';
+
+export interface Category {
+  id: ID;
+  label: string;
+  tone: Tone;
+  /** Arquivada: some das opções, mas os registros antigos continuam com ela. */
+  archived?: boolean;
+}
+
+// ---------------------------------------------------------------- Atividade
+
+/** Registro do que cada pessoa fez no sistema ("Maria registrou contato com X"). */
+export interface ActivityEntry {
+  id: ID;
+  at: Timestamp;
+  userId: ID;
+  text: string;
+  href: string;
 }
 
 // ---------------------------------------------------------------- Tarefas
@@ -419,9 +539,15 @@ export interface AppData {
   proposals: Proposal[];
   /** Metas por mês (chave AAAA-MM). */
   goals: Record<string, MonthlyGoals>;
+  /** Categorias editáveis (serviços, despesas, origens dos leads...). */
+  categories?: Record<CategoryGroup, Category[]>;
+  /** Últimas ações da equipe (as mais recentes no fim). */
+  activity?: ActivityEntry[];
   meta: {
     /** `demo` = dados fictícios carregados; `empty` = base limpa para uso real local. */
     dataset: 'demo' | 'empty';
     createdAt: Timestamp;
+    /** Ajustes únicos já aplicados aos dados (cada um roda uma vez só). */
+    migrations?: string[];
   };
 }

@@ -215,6 +215,9 @@ export function saveService(draft: AppData, id: ID | null, input: ServiceInput):
   const name = input.name.trim();
   if (!name) throw new Error('Dê um nome para o serviço.');
   if (!(input.price >= 0)) throw new Error('Informe o valor do serviço.');
+  if (input.promoPrice != null && !(input.promoPrice >= 0 && input.promoPrice < input.price)) throw new Error('O preço promocional precisa ser menor que o preço normal.');
+  if (input.promoUntil && !/^\d{4}-\d{2}-\d{2}$/.test(input.promoUntil)) throw new Error('Data da promoção inválida.');
+  if (id && input.packageItems?.includes(id)) throw new Error('Um pacote não pode conter ele mesmo.');
   if (input.deliveryDays !== null && !(Number.isInteger(input.deliveryDays) && input.deliveryDays >= 0)) throw new Error('O prazo deve ser um número de dias.');
   if (draft.services.some((s) => s.id !== id && s.name.toLocaleLowerCase('pt-BR') === name.toLocaleLowerCase('pt-BR'))) {
     throw new Error(`Já existe um serviço chamado "${name}".`);
@@ -233,6 +236,22 @@ export function saveService(draft: AppData, id: ID | null, input: ServiceInput):
 export function toggleServiceActive(draft: AppData, id: ID): void {
   const service = mustFind(draft.services, id, 'Serviço');
   service.active = !service.active;
+}
+
+/** Promoção valendo no dia (preço menor e dentro da validade). */
+export function promoActive(service: Pick<Service, 'price' | 'promoPrice' | 'promoUntil'>, today: ISODate): boolean {
+  return service.promoPrice != null && service.promoPrice < service.price && (!service.promoUntil || service.promoUntil >= today);
+}
+
+/** Preço a cobrar hoje (promocional, se estiver valendo). */
+export function effectivePrice(service: Pick<Service, 'price' | 'promoPrice' | 'promoUntil'>, today: ISODate): number {
+  return promoActive(service, today) ? service.promoPrice! : service.price;
+}
+
+/** Quanto os serviços do pacote custariam separados (para mostrar a economia). */
+export function packageSeparatePrice(data: AppData, service: Service): number | null {
+  const items = (service.packageItems ?? []).map((id) => data.services.find((s) => s.id === id)).filter((s): s is Service => Boolean(s));
+  return items.length ? items.reduce((sum, s) => sum + s.price, 0) : null;
 }
 
 /** Linhas do "o que está incluso", para virar checklist de projeto. */
@@ -442,12 +461,12 @@ export function acceptProposal(draft: AppData, id: ID, options: AcceptOptions, t
 
 // ---------------------------------------------------------------- Metas e indicadores
 
-export const EMPTY_GOALS: MonthlyGoals = { revenue: null, newClients: null, contacts: null, proposalsSent: null, proposalsAccepted: null };
+export const EMPTY_GOALS: MonthlyGoals = { revenue: null, newClients: null, contacts: null, proposalsSent: null, proposalsAccepted: null, dailyContacts: null };
 
 export function setMonthlyGoals(draft: AppData, month: MonthKey, goals: MonthlyGoals): void {
   if (!/^\d{4}-\d{2}$/.test(month)) throw new Error('Mês inválido.');
   for (const [key, value] of Object.entries(goals)) {
-    if (value !== null && (!Number.isFinite(value) || value < 0)) throw new Error(`Meta inválida (${key}).`);
+    if (value !== null && value !== undefined && (!Number.isFinite(value) || value < 0)) throw new Error(`Meta inválida (${key}).`);
   }
   draft.goals[month] = { ...goals };
 }

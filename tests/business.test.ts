@@ -61,7 +61,8 @@ beforeEach(() => {
 describe('dados salvos por versões anteriores', () => {
   function legacy(): AppData {
     const old = createEmptyData(NOW) as Partial<AppData> & AppData;
-    for (const key of ['pipelineStages', 'finance', 'contents', 'campaigns', 'services', 'proposals', 'goals'] as const) delete old[key];
+    for (const key of ['pipelineStages', 'finance', 'contents', 'campaigns', 'services', 'proposals', 'goals', 'categories', 'activity'] as const) delete old[key];
+    delete old.meta.migrations;
     old.clients.push({ id: 'cli_x', company: 'Cliente X', contactName: '', segment: '', contact: {}, city: '', contractStatus: 'em_andamento', installments: [], pendingItems: [], nextStep: '', notes: '', createdAt: NOW.toISOString() });
     old.projects.push({ id: 'prj_x', name: 'Site X', clientId: 'cli_x', ownerIds: ['maria'], status: 'em_andamento', startDate: TODAY, dueDate: TODAY, description: '', stages: [], checklist: [], links: { repository: '', production: '', staging: '' }, createdAt: NOW.toISOString() } as unknown as AppData['projects'][number]);
     old.opportunities.push({ id: 'opp_x', contactName: '', company: 'Lead X', segment: '', source: 'Instagram', contact: {}, stage: 'etapa_que_nao_existe', estimatedValue: null, nextAction: '', followUpDate: null, ownerIds: ['maria'], notes: '', history: [], clientId: null, createdAt: NOW.toISOString() });
@@ -74,9 +75,11 @@ describe('dados salvos por versões anteriores', () => {
     assert.deepEqual(a, b, 'dois navegadores precisam chegar ao mesmo resultado');
     assert.deepEqual(normalizeData(structuredClone(a)), a, 'rodar de novo não muda nada');
     assert.equal(a.projects[0].type, 'site');
-    assert.deepEqual(a.finance, { entries: [], recurring: [] });
+    assert.deepEqual(a.finance, { entries: [], recurring: [], openingBalance: null, reserves: [], reserveMoves: [] });
     assert.ok(a.services.length >= 9, 'catálogo inicial com a tabela de preços');
-    assert.equal(a.services.find((s) => s.id === 'svc_essencial')?.price, 49);
+    assert.equal(a.services.find((s) => s.id === 'svc_essencial')?.price, 49.99);
+    assert.ok(a.services.some((s) => s.id === 'svc_pacote_completo'), 'pacotes da Black Friday entram uma vez só');
+    assert.equal(normalizeData(structuredClone(a)).services.filter((s) => s.id === 'svc_pacote_completo').length, 1);
     assert.equal(pipelineStages(a).at(-1)?.id, 'perdido');
     assert.equal(a.opportunities[0].stage, pipelineStages(a)[0].id, 'etapa inexistente volta para a primeira');
   });
@@ -264,7 +267,7 @@ describe('serviços, propostas e metas', () => {
     const client = data.clients.find((c) => c.id === result.clientId)!;
     assert.equal(client.company, 'Aurora Contabilidade');
     assert.deepEqual(result.projects.map((x) => x.type), ['site', 'plano_mensal']);
-    assert.equal(result.projects[1].extra.amount, 49);
+    assert.equal(result.projects[1].extra.amount, 49.99);
     assert.deepEqual(client.installments.map((i) => i.amount), [325, 325]);
     assert.equal(client.installments[0].dueDate, '2026-11-03');
     assert.equal(data.opportunities.find((o) => o.id === opp.id)?.stage, 'ganho');
