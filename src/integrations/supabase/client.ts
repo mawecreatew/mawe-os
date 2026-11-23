@@ -187,6 +187,24 @@ export class SupabaseClient {
     return response;
   }
 
+  /**
+   * Chamada autenticada ao armazenamento de arquivos (Storage), usada pelas
+   * provas das aprovações (bucket `provas`, ver supabase/storage.sql).
+   */
+  async files(path: string, init: RequestInit = {}): Promise<Response> {
+    let session = await this.validSession();
+    let response = await this.call(`/storage/v1/${path}`, { ...init, token: session.accessToken });
+    if (response.status === 401) {
+      session = await this.refresh();
+      response = await this.call(`/storage/v1/${path}`, { ...init, token: session.accessToken });
+      if (response.status === 401) {
+        this.persist(null);
+        throw new AuthRequiredError();
+      }
+    }
+    return response;
+  }
+
   /** Perfil do Mawe OS ligado à conta (tabela `members`). Null se a conta não tiver acesso. */
   async fetchMember(): Promise<Member | null> {
     const session = await this.validSession();

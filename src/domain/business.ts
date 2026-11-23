@@ -9,6 +9,7 @@ import { monthRevenue } from './finance.ts';
 import { PAYMENT_TERMS, projectTypeForCategory } from './labels.ts';
 import { addInstallment, convertOpportunityToClient, createProject, type ActionContext } from './operations.ts';
 import type {
+  ContractInfo,
   AppData,
   Campaign,
   ContentItem,
@@ -457,6 +458,18 @@ export function acceptProposal(draft: AppData, id: ID, options: AcceptOptions, t
     }
   }
   return result;
+}
+
+/** Dados do contratante usados só no contrato em PDF. */
+export function saveContractInfo(draft: AppData, id: ID, info: ContractInfo): void {
+  const p = mustFind(draft.proposals, id, 'Proposta');
+  if (info.deliveryDays !== null && !(Number.isInteger(info.deliveryDays) && info.deliveryDays > 0)) throw new Error('O prazo deve ser um número de dias úteis.');
+  p.contract = {
+    clientDocument: info.clientDocument.trim(),
+    clientAddress: info.clientAddress.trim(),
+    scope: info.scope.trim(),
+    deliveryDays: info.deliveryDays,
+  };
 }
 
 // ---------------------------------------------------------------- Metas e indicadores

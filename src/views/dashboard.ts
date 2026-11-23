@@ -25,6 +25,7 @@ import { avatarStack, button, emptyState, pageHeader, panel, progressBar, segmen
 import { formActions, textField } from '../ui/forms.ts';
 import { closeModal, openModal, toast } from '../ui/overlay.ts';
 import { icon, type IconName } from '../ui/icons.ts';
+import { renderDay } from './day.ts';
 
 const ui = { period: '30d' as RevenuePeriod };
 
@@ -269,6 +270,7 @@ const FOCUS_META: Record<FocusKind, { icon: IconName; label: string }> = {
   bill: { icon: 'wallet', label: 'Financeiro' },
   delivery: { icon: 'flag', label: 'Entrega' },
   domain: { icon: 'globe', label: 'Domínio' },
+  aftersales: { icon: 'chat', label: 'Pós-venda' },
 };
 
 function focusWhen(item: FocusItem, t: string): SafeHtml {
@@ -535,6 +537,8 @@ export const dashboardView: View = {
           ${button({ label: 'Tarefa', action: 'task:new', variant: 'primary', icon: 'plus' })}
         `,
       })}
+
+      ${renderDay()}
 
       ${finance ? renderFinanceHero() : ''}
 

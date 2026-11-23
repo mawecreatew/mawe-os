@@ -6,15 +6,24 @@ import { BRAND } from '../config/brand.ts';
 import { aiProvider } from '../agents/provider.ts';
 import { addPerson, removePerson } from '../domain/people.ts';
 import { ROLE_LABELS } from '../domain/permissions.ts';
-import { auth, brandAssets, requirePermission, store } from '../app/context.ts';
+import { allowed, auth, brandAssets, requirePermission, store } from '../app/context.ts';
 import type { View } from '../app/view.ts';
 import { avatar, badge, button, notice, pageHeader, panel } from '../ui/components.ts';
-import { textField } from '../ui/forms.ts';
+import { textareaField, textField } from '../ui/forms.ts';
+import { agencyOf, saveAgency } from '../domain/daily.ts';
+import { themePicker } from '../app/theme.ts';
+
 import { confirmAction, toast } from '../ui/overlay.ts';
 
 const MIN_PASSWORD = 10;
 
 registerForms({
+  'agency:save': async (_form, values) => {
+    requirePermission('system:manage');
+    const fields = ['name', 'responsible', 'document', 'city', 'pix', 'whatsapp', 'email', 'instagram', 'website', 'paymentTerms', 'hostingNote'] as const;
+    await store().apply((draft) => saveAgency(draft, Object.fromEntries(fields.map((f) => [f, values.text(f)]))));
+    toast('Dados da agência salvos. Eles já aparecem nos documentos.');
+  },
   'auth:change-password': async (form, values) => {
     const session = auth();
     if (session.mode !== 'supabase') return;
@@ -85,6 +94,40 @@ function integration(name: string, status: string, tone: 'neutral' | 'warning' |
   </li>`;
 }
 
+function renderAgency(): SafeHtml {
+  const a = agencyOf(store().data);
+  const edit = allowed('system:manage');
+  return panel({
+    title: 'Dados da agência',
+    icon: 'file',
+    body: html`
+      <p class="small muted">Aparecem na proposta, no contrato e no manual do site. CPF/CNPJ e chave Pix só vão para os documentos que vocês baixarem.</p>
+      <form class="form" data-form="agency:save">
+        <div class="form-grid">
+          ${textField({ name: 'name', label: 'Nome da agência', value: a.name, required: true })}
+          ${textField({ name: 'responsible', label: 'Responsável (assina o contrato)', value: a.responsible })}
+        </div>
+        <div class="form-grid">
+          ${textField({ name: 'document', label: 'CPF ou CNPJ', value: a.document })}
+          ${textField({ name: 'city', label: 'Cidade (foro do contrato)', value: a.city })}
+        </div>
+        <div class="form-grid">
+          ${textField({ name: 'whatsapp', label: 'WhatsApp', value: a.whatsapp, type: 'tel' })}
+          ${textField({ name: 'pix', label: 'Chave Pix', value: a.pix })}
+        </div>
+        <div class="form-grid">
+          ${textField({ name: 'email', label: 'E-mail', value: a.email, type: 'email' })}
+          ${textField({ name: 'instagram', label: 'Instagram', value: a.instagram })}
+        </div>
+        ${textField({ name: 'website', label: 'Site', value: a.website })}
+        ${textField({ name: 'paymentTerms', label: 'Pagamento padrão', value: a.paymentTerms, hint: 'Usado quando a proposta não tem forma de pagamento.' })}
+        ${textareaField({ name: 'hostingNote', label: 'Texto sobre hospedagem (contrato)', value: a.hostingNote, rows: 2 })}
+        ${edit ? html`<div><button type="submit" class="btn btn--primary">Salvar dados</button></div>` : ''}
+      </form>
+    `,
+  });
+}
+
 export const systemView: View = {
   title: () => 'Sistema',
   render: () => {
@@ -148,6 +191,8 @@ export const systemView: View = {
             `,
           })}
 
+          ${renderAgency()}
+
           ${connected
             ? panel({
                 title: 'Trocar minha senha',
@@ -166,6 +211,7 @@ export const systemView: View = {
         </div>
 
         <aside class="detail-grid__side">
+          ${panel({ title: 'Cores do sistema', icon: 'image', body: html`<p class="small muted">Cada pessoa escolhe a sua. Fica salvo só neste navegador.</p>${themePicker()}` })}
           ${panel({
             title: 'Equipe',
             icon: 'user',

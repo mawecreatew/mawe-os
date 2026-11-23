@@ -501,13 +501,26 @@ export function createProject(draft: AppData, input: ProjectInput, ctx: ActionCo
 export function updateProject(draft: AppData, id: ID, patch: Partial<ProjectInput>): void {
   const project = mustFind(draft.projects, id, 'Projeto');
   const { links, extra, type, ...rest } = patch;
+  const wasPublished = project.status === 'publicado';
   Object.assign(project, rest);
+  // Virou publicado pelo formulário: guarda o dia (base do pós-venda).
+  if (project.status === 'publicado' && !wasPublished) project.publishedAt = todayISO();
   if (rest.name !== undefined) project.name = rest.name.trim();
   if (rest.ownerIds !== undefined) project.ownerIds = responsibles(draft, rest.ownerIds);
   if (links) project.links = { ...project.links, ...links };
   if (extra) project.extra = cleanExtra(extra, project.extra);
   // O tipo é escolhido na criação; trocar depois mudaria etapas e checklist já em uso.
   void type;
+}
+
+/**
+ * Muda o status do projeto. Ao virar "publicado", guarda o dia: é a partir
+ * dele que o calendário de pós-venda do cliente começa.
+ */
+export function setProjectStatus(draft: AppData, id: ID, status: Project['status'], today: ISODate): void {
+  const project = mustFind(draft.projects, id, 'Projeto');
+  if (status === 'publicado' && project.status !== 'publicado') project.publishedAt = today;
+  project.status = status;
 }
 
 /** Exclui um projeto. Tarefas e conteúdos ficam, só perdem o vínculo; decisões do projeto são removidas. */

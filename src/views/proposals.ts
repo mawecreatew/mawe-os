@@ -10,6 +10,7 @@ import {
   effectivePrice,
   proposalRecipient,
   proposalTotals,
+  saveContractInfo,
   saveProposal,
   setProposalStatus,
   type ProposalInput,
@@ -23,6 +24,10 @@ import { badge, button, demoTag, emptyState, externalLink, pageHeader, panel, se
 import { formActions, selectField, textareaField, textField } from '../ui/forms.ts';
 import { icon } from '../ui/icons.ts';
 import { closeModal, confirmAction, openModal, toast } from '../ui/overlay.ts';
+import { approvalsOf } from '../domain/approvals.ts';
+import { contractDocument, contractGaps, proposalDocument } from '../domain/documents.ts';
+import { openDocument } from '../ui/document.ts';
+import { approvalList } from './approvals.ts';
 
 const ui = { status: 'todas' as ProposalStatus | 'todas' };
 
@@ -273,6 +278,20 @@ registerActions({
       toast('Não foi possível copiar automaticamente neste navegador.', 'error');
     }
   },
+  'proposal:pdf': (el) => {
+    const p = findProposal(store().data, el.dataset.id);
+    if (p) openDocument(proposalDocument(store().data, p, today()), { title: 'Proposta em PDF' });
+  },
+  'proposal:contract': (el) => {
+    const p = findProposal(store().data, el.dataset.id);
+    if (!p) return;
+    if (!p.contract) return openContractForm(p);
+    showContract(p);
+  },
+  'proposal:contract-edit': (el) => {
+    const p = findProposal(store().data, el.dataset.id);
+    if (p) openContractForm(p);
+  },
   'proposal:delete': async (el) => {
     const ok = await confirmAction({ title: 'Excluir proposta', text: 'A proposta será apagada. Projetos e parcelas já criados a partir dela continuam.', confirmLabel: 'Excluir' });
     if (!ok) return;
@@ -344,6 +363,55 @@ export function renderProposals(): SafeHtml {
   `;
 }
 
+// ---------------------------------------------------------------- Contrato em PDF
+
+function showContract(p: Proposal): void {
+  const gaps = contractGaps(store().data, p);
+  openDocument(contractDocument(store().data, p, today()), {
+    title: 'Contrato em PDF',
+    warning: gaps.length ? `${gaps.join('; ')}. Os espaços ficam em branco para preencher à mão.` : undefined,
+    extraActions: button({ label: 'Dados do contrato', action: 'proposal:contract-edit', icon: 'edit', variant: 'ghost', size: 'sm', data: { id: p.id } }),
+  });
+}
+
+function openContractForm(p: Proposal): void {
+  const c = p.contract;
+  const days = c?.deliveryDays ?? Math.max(0, ...p.items.map((i) => store().data.services.find((s) => s.id === i.serviceId)?.deliveryDays ?? 0));
+  openModal({
+    title: 'Dados do contrato',
+    description: 'Ficam salvos nesta proposta e entram só no contrato.',
+    body: html`
+      <form class="form" data-form="proposal:contract" data-id="${p.id}">
+        <div class="form-grid">
+          ${textField({ name: 'clientDocument', label: 'CPF ou CNPJ do cliente', value: c?.clientDocument, autofocus: true })}
+          ${textField({ name: 'deliveryDays', label: 'Prazo (dias úteis)', value: days || '', inputmode: 'numeric' })}
+        </div>
+        ${textField({ name: 'clientAddress', label: 'Endereço do cliente', value: c?.clientAddress, placeholder: 'Rua, número, cidade' })}
+        ${textareaField({ name: 'scope', label: 'O que o site terá', value: c?.scope, rows: 2, placeholder: 'Ex.: início, cardápio, encomendas, depoimentos e contato' })}
+        ${formActions('Gerar contrato')}
+      </form>
+    `,
+  });
+}
+
+registerForms({
+  'proposal:contract': async (form, values) => {
+    requirePermission('commercial:edit');
+    const id = form.dataset.id!;
+    const rawDays = values.text('deliveryDays');
+    await store().apply((draft) =>
+      saveContractInfo(draft, id, {
+        clientDocument: values.text('clientDocument'),
+        clientAddress: values.text('clientAddress'),
+        scope: values.text('scope'),
+        deliveryDays: rawDays ? Number(rawDays) : null,
+      }),
+    );
+    const p = findProposal(store().data, id);
+    if (p) showContract(p);
+  },
+});
+
 // ---------------------------------------------------------------- Detalhe
 
 export function renderProposalDetail(p: Proposal): SafeHtml {
@@ -362,6 +430,8 @@ export function renderProposalDetail(p: Proposal): SafeHtml {
         ${client ? html`<a href="#/clientes/${client.id}">${client.company}</a>` : opp ? html`<a href="#/comercial/${opp.id}">${opp.company}</a>` : ''}`,
       actions: html`
         ${button({ label: 'Copiar texto', action: 'proposal:copy', icon: 'copy', data: { id: p.id } })}
+        ${button({ label: 'Proposta em PDF', action: 'proposal:pdf', icon: 'download', data: { id: p.id } })}
+        ${button({ label: 'Contrato em PDF', action: 'proposal:contract', icon: 'file', data: { id: p.id } })}
         ${button({ label: 'Editar', action: 'proposal:edit', icon: 'edit', data: { id: p.id } })}`,
     })}
 
@@ -419,6 +489,15 @@ export function renderProposalDetail(p: Proposal): SafeHtml {
             <div class="info__item"><dt>Forma de pagamento</dt><dd>${p.paymentTerms || html`<span class="muted">Não definida</span>`}</dd></div>
             <div class="info__item"><dt>Válida até</dt><dd>${p.validUntil ? formatLongDate(p.validUntil) : html`<span class="muted">Sem validade</span>`}</dd></div>
           </dl>`,
+        })}
+        ${panel({
+          title: 'Aceite do cliente',
+          icon: 'check',
+          count: approvalsOf(store().data, { proposalId: p.id }).length,
+          action: allowed('projects:edit') ? button({ label: 'Registrar', action: 'approval:new', variant: 'ghost', icon: 'plus', size: 'sm', data: { proposal: p.id, client: p.clientId ?? '', kind: 'proposta' } }) : undefined,
+          body: approvalsOf(store().data, { proposalId: p.id }).length
+            ? approvalList(approvalsOf(store().data, { proposalId: p.id }))
+            : html`<p class="muted small">Quando o cliente disser sim, registre com o print da conversa. Vale como prova do combinado.</p>`,
         })}
         <div class="danger-zone">
           ${button({ label: 'Excluir proposta', action: 'proposal:delete', variant: 'ghost', icon: 'trash', size: 'sm', data: { id: p.id } })}

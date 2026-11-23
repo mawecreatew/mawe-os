@@ -1,5 +1,7 @@
 /** Clientes: cadastro, projetos relacionados, contratação, parcelas e pendências. */
-import { formatShortDate, monthKey, monthLabel } from '../core/dates.ts';
+import { formatShortDate, monthKey, monthLabel, relativeDay } from '../core/dates.ts';
+import { afterSalesPoints, afterSalesStart, markAfterSales, nextAfterSales } from '../domain/aftersales.ts';
+import { approvalsOf } from '../domain/approvals.ts';
 import { categoryNames } from '../domain/categories.ts';
 import { whatsappLink } from '../domain/commercial.ts';
 import { deleteSubscription, paySubscription, saveSubscription, subscriptionDates, toggleFinanceEntryPaid, type SubscriptionInput } from '../domain/finance.ts';
@@ -34,6 +36,7 @@ import { closeModal, confirmAction, openModal, toast } from '../ui/overlay.ts';
 import { taskList, taskRow } from '../ui/task-row.ts';
 import { openProjectForm } from './projects.ts';
 import { openProposalForm, proposalsOfClient } from './proposals.ts';
+import { approvalList } from './approvals.ts';
 
 function openClientForm(client?: Client): void {
   const v: ClientInput = client ?? { company: '', contactName: '', segment: '', contact: {}, city: '', contractStatus: 'proposta_enviada', nextStep: '', notes: '' };
@@ -446,6 +449,86 @@ function renderLinks(client: Client): SafeHtml {
   });
 }
 
+// ---------------------------------------------------------------- Pós-venda e aprovações
+
+function fillMessage(text: string, client: Client): string {
+  const first = client.contactName.trim().split(/\s+/)[0] ?? '';
+  return text.replace(/\{\{\s*nome\s*\}\}/g, first || client.company).replace(/\{\{\s*empresa\s*\}\}/g, client.company);
+}
+
+function renderAfterSales(client: Client): SafeHtml {
+  const { data } = store();
+  const t = today();
+  const points = afterSalesPoints(data, client);
+  const next = nextAfterSales(data, client, t);
+  const start = afterSalesStart(data, client.id);
+  return panel({
+    title: 'Pós-venda',
+    icon: 'chat',
+    className: 'aftersales-panel',
+    body: start
+      ? html`
+          ${next
+            ? html`<div class="${cx('aftersales-next', next.date <= t && 'is-due')}">
+                <span class="aftersales-next__when">${next.date <= t ? 'Fazer agora' : relativeDay(next.date, t)} · ${next.label}</span>
+                <strong>${next.action}</strong>
+                ${allowed('commercial:edit')
+                  ? html`<div class="quick-actions">
+                      ${button({ label: 'Copiar mensagem', action: 'aftersales:copy', icon: 'copy', size: 'sm', data: { client: client.id, message: next.messageId } })}
+                      ${button({ label: 'Fiz o contato', action: 'aftersales:done', icon: 'check', size: 'sm', variant: 'primary', data: { client: client.id, key: next.key } })}
+                    </div>`
+                  : ''}
+              </div>`
+            : html`<p class="muted small">Calendário do primeiro ano concluído.</p>`}
+          <ol class="aftersales">
+            ${points.map(
+              (p) => html`<li class="${cx('aftersales__item', p.doneOn && 'is-done', !p.doneOn && p === next && 'is-next')}">
+                <span class="aftersales__mark">${p.doneOn ? icon('check', 12) : ''}</span>
+                <span class="aftersales__label">${p.label}</span>
+                <span class="aftersales__date">${p.doneOn ? `feito ${formatShortDate(p.doneOn)}` : formatShortDate(p.date)}</span>
+              </li>`,
+            )}
+          </ol>
+          <p class="panel__foot">Começou na entrega de ${formatShortDate(start)}.</p>`
+      : html`<p class="muted small">O calendário de contatos (7 dias, 30 dias e a cada 3 meses) começa quando um projeto deste cliente for marcado como publicado.</p>`,
+  });
+}
+
+function renderClientApprovals(client: Client): SafeHtml {
+  const list = approvalsOf(store().data, { clientId: client.id });
+  return panel({
+    title: 'Aprovações',
+    icon: 'check',
+    count: list.length,
+    action: allowed('projects:edit') ? button({ label: 'Registrar', action: 'approval:new', variant: 'ghost', icon: 'plus', size: 'sm', data: { client: client.id } }) : undefined,
+    body: list.length
+      ? approvalList(list)
+      : emptyState({ icon: 'check', compact: true, title: 'Nada registrado', text: 'Briefing, proposta aceita, prévia aprovada: guarde o print aqui.' }),
+  });
+}
+
+registerActions({
+  'aftersales:copy': async (el) => {
+    const client = findClient(store().data, el.dataset.client);
+    const message = store().data.library.find((l) => l.id === el.dataset.message);
+    if (!client) return;
+    if (!message) {
+      toast('A mensagem foi removida da Biblioteca. Escreva uma nova em Biblioteca › Mensagens.', 'error');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(fillMessage(message.content, client));
+      toast('Mensagem copiada. Revise antes de mandar.');
+    } catch {
+      toast('Não foi possível copiar automaticamente.', 'error');
+    }
+  },
+  'aftersales:done': async (el) => {
+    await store().apply((draft, ctx) => markAfterSales(draft, el.dataset.client!, el.dataset.key!, today(), ctx));
+    toast('Contato de pós-venda registrado.');
+  },
+});
+
 function renderDetail(client: Client): SafeHtml {
   const { data } = store();
   const t = today();
@@ -482,6 +565,7 @@ function renderDetail(client: Client): SafeHtml {
 
         ${renderPlans(client)}
         ${renderPayments(client)}
+        ${renderClientApprovals(client)}
 
         ${panel({
           title: 'Propostas',
@@ -499,6 +583,7 @@ function renderDetail(client: Client): SafeHtml {
       </div>
 
       <aside class="detail-grid__side">
+        ${renderAfterSales(client)}
         ${panel({
           title: 'Próximo passo',
           body: html`<p class="lead-text">${client.nextStep || html`<span class="muted">Não definido</span>`}</p>`,

@@ -19,11 +19,18 @@ import {
   removeChecklistItem,
   removeDecision,
   toggleChecklistItem,
+  setProjectStatus,
   updateProject,
   type ProjectInput,
 } from '../domain/operations.ts';
 import { currentStage, decisionsOf, findClient, findProject, findUser, projectProgress, tasksRelatedTo } from '../domain/selectors.ts';
 import type { Project, ProjectStatus, ProjectType } from '../domain/types.ts';
+import { INCLUDED_REVISIONS, approvalsOf, revisionRounds } from '../domain/approvals.ts';
+import { siteManualDocument } from '../domain/documents.ts';
+import { currentStageOf, processForStage } from '../domain/processes.ts';
+import { openDocument } from '../ui/document.ts';
+import { approvalList } from './approvals.ts';
+import { processSteps } from './processes.ts';
 import { allowed, requirePermission, rerender, store, today } from '../app/context.ts';
 import type { View } from '../app/view.ts';
 import { badge, button, demoTag, emptyState, externalLink, pageHeader, panel, people, progressBar, segmented } from '../ui/components.ts';
@@ -303,10 +310,18 @@ registerActions({
     const project = findProject(store().data, el.dataset.id);
     if (project) openProjectForm(project);
   },
+  'project:manual': (el) => {
+    const project = findProject(store().data, el.dataset.id);
+    if (!project) return;
+    openDocument(siteManualDocument(store().data, project, today()), {
+      title: 'Manual do site',
+      warning: project.links.production ? undefined : 'Coloque o link do site publicado em "Editar" para ele aparecer no manual.',
+    });
+  },
   'project:status': async (el) => {
     requirePermission('projects:edit');
     const status = (el as HTMLSelectElement).value as ProjectStatus;
-    await store().apply((draft) => updateProject(draft, el.dataset.id!, { status }));
+    await store().apply((draft) => setProjectStatus(draft, el.dataset.id!, status, today()));
     const project = findProject(store().data, el.dataset.id);
     toast(`Status alterado para "${projectStatusLabel(project?.type ?? 'site', status)}".`);
   },
@@ -411,6 +426,51 @@ function linkRow(label: string, value: string): SafeHtml {
   return html`<div class="info__item"><dt>${label}</dt><dd>${value ? externalLink(value, value.replace(/^https?:\/\//, '')) : html`<span class="muted">Não informado</span>`}</dd></div>`;
 }
 
+/** O passo a passo do manual para a etapa em que o projeto está agora. */
+function renderStageGuide(project: Project): SafeHtml {
+  const stage = currentStageOf(project);
+  const guide = stage ? processForStage(store().data, stage.name) : undefined;
+  if (!stage || !guide) return html``;
+  return panel({
+    title: `Como fazer: ${stage.name}`,
+    icon: 'route',
+    className: 'stage-guide',
+    action: html`<a class="btn btn--ghost btn--sm" href="#/processos">Ver o manual</a>`,
+    body: html`<p class="stage-guide__goal">${guide.goal}</p>${processSteps(guide)}`,
+  });
+}
+
+function renderProjectApprovals(project: Project): SafeHtml {
+  const { data } = store();
+  const list = approvalsOf(data, { projectId: project.id });
+  const rounds = revisionRounds(data, project.id);
+  const edit = allowed('projects:edit');
+  return panel({
+    title: 'Aprovações do cliente',
+    icon: 'check',
+    count: list.length,
+    action: edit ? button({ label: 'Registrar', action: 'approval:new', variant: 'ghost', icon: 'plus', size: 'sm', data: { project: project.id } }) : undefined,
+    body: html`
+      ${project.type === 'site' || project.type === 'sistema'
+        ? html`<p class="${cx('revisions', rounds > INCLUDED_REVISIONS && 'is-over')}">
+            <strong>${rounds} de ${INCLUDED_REVISIONS}</strong> rodadas de alteração usadas
+            ${rounds > INCLUDED_REVISIONS ? html`<span>· as próximas são orçadas à parte</span>` : ''}
+          </p>`
+        : ''}
+      ${list.length
+        ? approvalList(list)
+        : html`<p class="muted small">Quando o cliente aprovar a prévia ou pedir ajustes, registre aqui com o print da conversa.</p>`}
+      ${edit
+        ? html`<div class="quick-actions">
+            ${button({ label: 'Pediu alteração', action: 'approval:new', size: 'sm', data: { project: project.id, kind: 'alteracao', summary: `Rodada ${rounds + 1} de alterações` } })}
+            ${button({ label: 'Aprovou a prévia', action: 'approval:new', size: 'sm', data: { project: project.id, kind: 'previa' } })}
+            ${button({ label: 'Aceitou a entrega', action: 'approval:new', size: 'sm', data: { project: project.id, kind: 'entrega' } })}
+          </div>`
+        : ''}
+    `,
+  });
+}
+
 function renderDetail(project: Project): SafeHtml {
   const { data } = store();
   const t = today();
@@ -432,6 +492,7 @@ function renderDetail(project: Project): SafeHtml {
       subtitle: html`${badge(labelOf(PROJECT_TYPES, type), toneOf(PROJECT_TYPES, type))} ${client ? html`<a href="#/clientes/${client.id}">${client.company}</a>` : ''} ${demoTag(project)}`,
       actions: html`
         ${isLatestMonth ? button({ label: 'Renovar para o próximo mês', action: 'project:renew', icon: 'repeat', variant: 'primary', data: { id: project.id } }) : ''}
+        ${type === 'site' || type === 'sistema' ? button({ label: 'Manual do site', action: 'project:manual', icon: 'download', data: { id: project.id } }) : ''}
         ${button({ label: 'Editar', action: 'project:edit', icon: 'edit', data: { id: project.id } })}
         ${button({ label: 'Excluir', action: 'project:delete', icon: 'trash', variant: 'ghost', data: { id: project.id } })}`,
     })}
@@ -476,6 +537,10 @@ function renderDetail(project: Project): SafeHtml {
               </ol>`
             : emptyState({ icon: 'layers', compact: true, title: 'Sem etapas definidas' }),
         })}
+
+        ${renderStageGuide(project)}
+
+        ${renderProjectApprovals(project)}
 
         ${panel({
           title: type === 'plano_mensal' ? 'Entregas do plano' : 'Checklist de entrega',

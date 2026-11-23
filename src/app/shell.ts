@@ -44,6 +44,7 @@ const NAV: NavItem[] = [
     countTone: 'alert',
   },
   { group: 'Entregar', section: 'calendario', label: 'Calendário de conteúdo', icon: 'calendar' },
+  { group: 'Entregar', section: 'aprovacoes', label: 'Aprovações', icon: 'check' },
   {
     group: 'Gestão',
     section: 'financeiro',
@@ -55,6 +56,7 @@ const NAV: NavItem[] = [
   },
   { group: 'Gestão', section: 'trafego', label: 'Tráfego pago', icon: 'megaphone' },
   { group: 'Gestão', section: 'servicos', label: 'Serviços e preços', icon: 'tag' },
+  { group: 'Recursos', section: 'processos', label: 'Processos', icon: 'route' },
   { group: 'Recursos', section: 'biblioteca', label: 'Biblioteca', icon: 'library' },
   { group: 'Recursos', section: 'agentes', label: 'Central de agentes', icon: 'agents' },
 ];
@@ -133,6 +135,9 @@ export function renderSidebar(activeSection: string): SafeHtml {
       <a class="${cx('nav__item', activeSection === 'sistema' && 'is-active')}" href="#/sistema" data-action="nav:close">
         ${icon('settings', 18)}<span class="nav__label">Sistema</span>
       </a>
+      <button type="button" class="nav__item nav__item--button" data-action="theme:open">
+        ${icon('image', 18)}<span class="nav__label">Cores do sistema</span><span class="theme-dot" aria-hidden="true"></span>
+      </button>
       ${renderProfile()}
     </div>
   `;

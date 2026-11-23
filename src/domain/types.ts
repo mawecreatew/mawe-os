@@ -172,6 +172,8 @@ export interface Client {
   links?: ClientLink[];
   /** Domínio do site e quando renova (aparece no Foco de hoje 30 dias antes). */
   domain?: { name: string; renewsOn: ISODate | null } | null;
+  /** Contatos de pós-venda já feitos (chave do marco → dia em que foi feito). */
+  afterSales?: Record<string, ISODate>;
   createdAt: Timestamp;
   isDemo?: boolean;
 }
@@ -236,6 +238,8 @@ export interface Project {
   seriesId?: ID | null;
   /** Serviço do catálogo que originou o projeto, se houver. */
   serviceId?: ID | null;
+  /** Dia em que o projeto foi marcado como publicado/entregue (base do pós-venda). */
+  publishedAt?: ISODate | null;
   createdAt: Timestamp;
   isDemo?: boolean;
 }
@@ -405,10 +409,22 @@ export interface Proposal {
   contractLink: string;
   startDate: ISODate | null;
   paymentTerms: string;
+  /** Dados extras usados só para gerar o contrato em PDF. */
+  contract?: ContractInfo | null;
   projectIds: ID[];
   createdBy: ID;
   createdAt: Timestamp;
   isDemo?: boolean;
+}
+
+/** Dados do contratante que só aparecem no contrato (não ficam na ficha do cliente). */
+export interface ContractInfo {
+  clientDocument: string;
+  clientAddress: string;
+  /** O que o site terá (seções ou páginas). */
+  scope: string;
+  /** Prazo em dias úteis depois de receber os materiais. */
+  deliveryDays: number | null;
 }
 
 // ---------------------------------------------------------------- Metas
@@ -499,6 +515,102 @@ export interface Decision {
   isDemo?: boolean;
 }
 
+// ---------------------------------------------------------------- Processos
+
+/**
+ * Uma etapa do jeito de trabalhar da agência (o "manual"). Serve para treinar
+ * quem entrar na equipe e aparece dentro dos projetos quando ligada a uma
+ * etapa de produção.
+ */
+export interface ProcessStep {
+  id: ID;
+  /** Área do processo (ex.: Prospecção, Produção, Pós-venda). */
+  area: string;
+  /** Ordem dentro da área. */
+  order: number;
+  title: string;
+  /** Para que serve esta etapa. */
+  goal: string;
+  /** Quem faz (texto livre: "Maria", "Quem revisa"...). */
+  owner: string;
+  /** Quanto tempo leva. */
+  duration: string;
+  /** Passo a passo, na ordem. */
+  steps: string[];
+  tips: string;
+  /** Nome da etapa de produção dos projetos em que este processo aparece. */
+  stageName: string | null;
+  authorId: ID;
+  updatedAt: Timestamp;
+}
+
+// ---------------------------------------------------------------- Aprovações
+
+export type ApprovalKind = 'briefing' | 'proposta' | 'contrato' | 'pagamento' | 'previa' | 'alteracao' | 'entrega' | 'depoimento' | 'outro';
+
+/** Print ou PDF que prova a aprovação. */
+export interface ApprovalProof {
+  /** Caminho no armazenamento do Supabase (bucket `provas`). Vazio no protótipo local. */
+  path: string;
+  name: string;
+  type: string;
+  size: number;
+  /** Só no protótipo local: o arquivo (reduzido) fica junto com os dados. */
+  dataUrl?: string;
+}
+
+/** Registro de algo que o cliente aprovou ou pediu, com a prova. */
+export interface Approval {
+  id: ID;
+  kind: ApprovalKind;
+  clientId: ID | null;
+  projectId: ID | null;
+  proposalId: ID | null;
+  date: ISODate;
+  /** Por onde o cliente respondeu (WhatsApp, e-mail...). */
+  channel: string;
+  summary: string;
+  /** O que o cliente escreveu, copiado da conversa. */
+  quote: string;
+  link: string;
+  proof: ApprovalProof | null;
+  authorId: ID;
+  createdAt: Timestamp;
+  isDemo?: boolean;
+}
+
+// ---------------------------------------------------------------- Agência e rotina
+
+/** Dados da agência usados nos documentos (proposta, contrato, manual do site). */
+export interface AgencyProfile {
+  name: string;
+  responsible: string;
+  /** CPF ou CNPJ (vai no contrato). */
+  document: string;
+  /** Cidade do foro do contrato. */
+  city: string;
+  pix: string;
+  whatsapp: string;
+  email: string;
+  instagram: string;
+  website: string;
+  /** Como o pagamento costuma ser combinado (aparece na proposta e no contrato). */
+  paymentTerms: string;
+  /** Texto sobre hospedagem que entra no contrato. */
+  hostingNote: string;
+}
+
+export interface DailyPriority {
+  text: string;
+  done: boolean;
+}
+
+/** O dia da equipe: 3 prioridades de cada pessoa e o alinhamento da noite. */
+export interface DailyNote {
+  priorities: Record<ID, DailyPriority[]>;
+  alignment: { happened: string; blocked: string; tomorrow: string; doneAt: Timestamp | null };
+}
+
 // ---------------------------------------------------------------- Agentes
 
 export type AgentId = 'coordenador' | 'comercial' | 'organizacao' | 'tecnico';
@@ -543,6 +655,14 @@ export interface AppData {
   categories?: Record<CategoryGroup, Category[]>;
   /** Últimas ações da equipe (as mais recentes no fim). */
   activity?: ActivityEntry[];
+  /** Manual de processos da agência. */
+  processes?: ProcessStep[];
+  /** Aprovações dos clientes, com prova. */
+  approvals?: Approval[];
+  /** Dados da agência usados nos documentos. */
+  agency?: AgencyProfile;
+  /** Prioridades e alinhamento de cada dia (chave AAAA-MM-DD). Guarda só os últimos 60 dias. */
+  daily?: Record<string, DailyNote>;
   meta: {
     /** `demo` = dados fictícios carregados; `empty` = base limpa para uso real local. */
     dataset: 'demo' | 'empty';

@@ -113,6 +113,8 @@ try {
       'Serviços e preços': 'Serviços e preços',
       Biblioteca: 'Biblioteca',
       'Central de agentes': 'Central de agentes',
+      Processos: 'Processos',
+      Aprovações: 'Aprovações',
       Equipe: 'Equipe',
       Categorias: 'Categorias',
       Sistema: 'Sistema',
@@ -629,7 +631,7 @@ try {
     await go('#/sistema');
     await page.getByRole('button', { name: 'Começar com base vazia' }).click();
     await page.locator('dialog.modal').getByRole('button', { name: 'Apagar e começar' }).click();
-    for (const hash of ['#/painel', '#/comercial', '#/comercial/propostas', '#/clientes', '#/projetos', '#/calendario', '#/tarefas', '#/financeiro', '#/trafego', '#/biblioteca']) {
+    for (const hash of ['#/painel', '#/comercial', '#/comercial/propostas', '#/clientes', '#/projetos', '#/calendario', '#/tarefas', '#/financeiro', '#/trafego', '#/biblioteca/proposta', '#/aprovacoes']) {
       await go(hash);
       assert.ok((await page.locator('.empty-state').count()) > 0, `sem estado vazio em ${hash}`);
     }
@@ -649,6 +651,93 @@ try {
     await expectTitle('Página não encontrada');
   });
 
+  await step('painel: escreve as 3 prioridades do dia e o alinhamento da noite', async () => {
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await go('#/painel');
+    await page.locator('#prio-0').fill('Fechar a proposta do Café Moenda');
+    await page.locator('#prio-0').press('Tab');
+    await page.locator('.prio').first().locator('input[type=checkbox]:not([disabled])').waitFor();
+    await page.locator('.prio').first().locator('input[type=checkbox]').check();
+    await page.locator('#align-tomorrow').fill('Mandar a prévia da clínica');
+    await page.locator('#align-tomorrow').press('Tab');
+    await page.waitForTimeout(150);
+    await page.reload();
+    await page.waitForSelector('.page-title');
+    assert.equal(await page.locator('#prio-0').inputValue(), 'Fechar a proposta do Café Moenda');
+    assert.ok(await page.locator('.prio').first().evaluate((el) => el.classList.contains('is-done')));
+    assert.equal(await page.locator('#align-tomorrow').inputValue(), 'Mandar a prévia da clínica');
+  });
+
+  await step('processos: manual por área, nova etapa e manual em PDF', async () => {
+    await go('#/processos');
+    await expectTitle('Processos');
+    assert.ok((await page.locator('details.proc').count()) >= 10);
+    await page.locator('details.proc summary').first().click();
+    assert.ok((await page.locator('details.proc[open] .proc__steps li').count()) > 2);
+    await page.getByRole('button', { name: 'Nova etapa' }).click();
+    await page.locator('dialog.modal input[name=title]').fill('Etapa de teste automatizado');
+    await page.locator('dialog.modal textarea[name=steps]').fill('Primeiro passo\nSegundo passo');
+    await submitModal();
+    await page.locator('.proc__title', { hasText: 'Etapa de teste automatizado' }).waitFor();
+    await page.evaluate(() => { window.__printed = 0; window.print = () => { window.__printed++; }; });
+    await page.getByRole('button', { name: 'Manual em PDF' }).click();
+    await page.locator('dialog.modal .doc__title', { hasText: 'Manual de processos' }).waitFor();
+    await page.locator('dialog.modal').getByRole('button', { name: 'Baixar PDF' }).click();
+    assert.equal(await page.evaluate(() => window.__printed), 1);
+    await page.locator('dialog.modal [data-action="modal:close"]').first().click();
+  });
+
+  await step('projeto: mostra como fazer a etapa e registra a aprovação com print', async () => {
+    await go('#/projetos');
+    const href = await page.locator('#view a[href^="#/projetos/"]', { hasText: 'Site da clínica' }).first().getAttribute('href');
+    await go(href);
+    await page.locator('.stage-guide .proc__steps li').first().waitFor();
+    await page.getByRole('button', { name: 'Aprovou a prévia' }).click();
+    // Print de 4×4 pixels (PNG) só para o teste.
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAFUlEQVR4XmPc0hPFAANMcBYDAx4OAFFyAaKl6tAbAAAAAElFTkSuQmCC', 'base64');
+    await page.locator('dialog.modal input[type=file]').setInputFiles({ name: 'print.png', mimeType: 'image/png', buffer: png });
+    await page.locator('dialog.modal textarea[name=quote]').fill('Amei! Pode publicar.');
+    await submitModal();
+    const item = page.locator('.approval', { hasText: 'Prévia aprovada' }).first();
+    await item.waitFor();
+    await page.waitForFunction(() => document.querySelector('.approval img[data-proof]')?.getAttribute('src')?.startsWith('data:image/'));
+    await item.click();
+    await page.locator('dialog.modal .approval-quote', { hasText: 'Amei! Pode publicar.' }).waitFor();
+    await page.locator('dialog.modal [data-action="modal:close"]').first().click();
+    await go('#/aprovacoes');
+    await expectTitle('Aprovações');
+    assert.ok((await page.locator('.approval').count()) >= 1);
+  });
+
+  await step('proposta: gera o contrato em PDF pedindo os dados do contratante', async () => {
+    await go('#/comercial/propostas');
+    const href = await page.locator('#view a[href^="#/comercial/propostas/"]').first().getAttribute('href');
+    await go(href);
+    await page.getByRole('button', { name: 'Proposta em PDF' }).click();
+    await page.locator('dialog.modal .doc__title', { hasText: 'Proposta comercial' }).waitFor();
+    await page.locator('dialog.modal [data-action="modal:close"]').first().click();
+    await page.getByRole('button', { name: 'Contrato em PDF' }).click();
+    await page.locator('dialog.modal input[name=clientDocument]').fill('111.222.333-44');
+    await submitModal().catch(() => {});
+    await page.locator('dialog.modal .doc__title', { hasText: 'Contrato de prestação de serviços' }).waitFor();
+    assert.match(await page.locator('dialog.modal .doc').innerText(), /111\.222\.333-44/);
+    await page.locator('dialog.modal [data-action="modal:close"]').first().click();
+  });
+
+  await step('cores do sistema: troca o tema e mantém depois de recarregar', async () => {
+    await go('#/painel');
+    await page.locator('.sidebar [data-action="theme:open"]').click();
+    await page.locator('dialog.modal .theme-card', { hasText: 'Noite' }).click();
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.tema), 'noite');
+    await page.reload();
+    await page.waitForSelector('.page-title');
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.tema), 'noite');
+    await page.evaluate(() => localStorage.removeItem('mawe-os:tema'));
+    await page.reload();
+    await page.waitForSelector('.page-title');
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.tema ?? null), null);
+  });
+
   await step('celular: menu abre, navega e fecha', async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await go('#/painel');
@@ -662,7 +751,7 @@ try {
     assert.equal(await page.locator('body').evaluate((b) => b.classList.contains('nav-open')), false);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     assert.ok(overflow <= 0, `rolagem horizontal indesejada: ${overflow}px`);
-    for (const hash of ['#/calendario', '#/financeiro', '#/trafego', '#/servicos', '#/comercial/propostas', '#/painel']) {
+    for (const hash of ['#/calendario', '#/financeiro', '#/trafego', '#/servicos', '#/comercial/propostas', '#/processos', '#/aprovacoes', '#/painel']) {
       await go(hash);
       const extra = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
       assert.ok(extra <= 0, `rolagem horizontal indesejada em ${hash}: ${extra}px`);

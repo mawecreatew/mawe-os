@@ -7,8 +7,9 @@
 import { fillCategories } from './categories.ts';
 import { fillStageKinds, stageKind } from './commercial.ts';
 import { DEFAULT_PIPELINE_STAGES, FINAL_STAGES, LOST_STAGE, WON_STAGE } from './labels.ts';
+import { starterProcesses } from './processes.ts';
 import { STARTER_SERVICES } from './templates.ts';
-import type { AppData, PipelineStage, Service } from './types.ts';
+import type { AppData, LibraryItem, PipelineStage, Service } from './types.ts';
 
 /** Garante que `ganho` e `perdido` existam e fiquem no fim, nessa ordem. */
 export function fixFinalStages(stages: PipelineStage[]): PipelineStage[] {
@@ -40,6 +41,7 @@ export function fillDefaults(data: AppData): AppData {
     if (!Array.isArray(c.subscriptions)) c.subscriptions = [];
     if (!Array.isArray(c.links)) c.links = [];
     if (c.domain === undefined) c.domain = null;
+    if (!c.afterSales || typeof c.afterSales !== 'object') c.afterSales = {};
   }
   for (const p of d.projects) {
     if (!p.type) p.type = 'site';
@@ -47,6 +49,7 @@ export function fillDefaults(data: AppData): AppData {
     if (p.period === undefined) p.period = null;
     if (p.seriesId === undefined) p.seriesId = null;
     if (p.serviceId === undefined) p.serviceId = null;
+    if (p.publishedAt === undefined) p.publishedAt = null;
   }
   if (!d.finance || typeof d.finance !== 'object') d.finance = { entries: [], recurring: [] };
   if (!Array.isArray(d.finance.entries)) d.finance.entries = [];
@@ -59,6 +62,10 @@ export function fillDefaults(data: AppData): AppData {
   if (!Array.isArray(d.campaigns)) d.campaigns = [];
   if (!Array.isArray(d.services)) d.services = structuredClone(STARTER_SERVICES);
   if (!Array.isArray(d.proposals)) d.proposals = [];
+  for (const p of d.proposals) if (p.contract === undefined) p.contract = null;
+  if (!Array.isArray(d.processes)) d.processes = starterProcesses(d.users.some((u) => u.id === 'maria') ? 'maria' : (d.users[0]?.id ?? 'maria'));
+  if (!Array.isArray(d.approvals)) d.approvals = [];
+  if (!d.daily || typeof d.daily !== 'object') d.daily = {};
   if (!d.goals || typeof d.goals !== 'object') d.goals = {};
   for (const s of d.services) if (!Array.isArray(s.packageItems)) s.packageItems = [];
   fillCategories(d);
@@ -131,6 +138,51 @@ const MIGRATIONS: Array<{ id: string; run: (d: AppData) => void }> = [
         packageItems: [],
       });
     },
+  },
+  {
+    // Mensagens prontas do pós-venda e do aviso de renovação do domínio (usadas
+    // pelos lembretes de pós-venda). Ids fixos: os dois sócios geram o mesmo.
+    id: '2026-11-posvenda-mensagens',
+    run: (d) => {
+      const author = d.users.some((u) => u.id === 'maria') ? 'maria' : (d.users[0]?.id ?? 'maria');
+      for (const item of AFTER_SALES_MESSAGES) {
+        if (!d.library.some((l) => l.id === item.id)) d.library.push({ ...item, authorId: author, updatedAt: '2026-11-23T12:00:00.000Z', ...(d.meta.dataset === 'demo' ? { isDemo: true } : {}) });
+      }
+    },
+  },
+];
+
+const AFTER_SALES_MESSAGES: Array<Omit<LibraryItem, 'authorId' | 'updatedAt'>> = [
+  {
+    id: 'lib_posvenda_7',
+    category: 'mensagem',
+    title: 'Pós-venda: 7 dias',
+    summary: 'Uma semana depois da entrega: saber se está tudo certo e pedir depoimento.',
+    content:
+      'Oi, {{nome}}! Já faz uma semana que o site da {{empresa}} está no ar. Está tudo certinho? Algum cliente comentou?\n\nSe puder, me manda um áudio ou uma mensagem curtinha contando como foi trabalhar com a gente. Ajuda muito uma agência que está crescendo!',
+  },
+  {
+    id: 'lib_posvenda_30',
+    category: 'mensagem',
+    title: 'Pós-venda: 30 dias',
+    summary: 'Um mês depois: ver se o site traz contatos e oferecer extras.',
+    content:
+      'Oi, {{nome}}! Um mês de site no ar! Ele já trouxe contatos pelo WhatsApp?\n\nSe quiser movimentar mais, a gente também faz artes de divulgação para o Instagram e o status, e tem planos de manutenção mensal.',
+  },
+  {
+    id: 'lib_posvenda_90',
+    category: 'mensagem',
+    title: 'Pós-venda: a cada 3 meses',
+    summary: 'Mensagem leve para manter contato.',
+    content: 'Oi, {{nome}}! Passando para saber como estão as coisas na {{empresa}}. Se tiver novidade (produto, serviço, horário), me avisa que a gente atualiza o site.',
+  },
+  {
+    id: 'lib_dominio_renovacao',
+    category: 'mensagem',
+    title: 'Aviso de renovação do domínio',
+    summary: 'Um mês antes de o domínio vencer.',
+    content:
+      'Oi, {{nome}}! Lembrete importante: o domínio do site da {{empresa}} vence daqui a um mês. A renovação é feita no Registro.br, no seu nome. Se vencer, o site sai do ar.\n\nQuer que eu te mande o passo a passo?',
   },
 ];
 

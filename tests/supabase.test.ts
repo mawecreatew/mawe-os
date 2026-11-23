@@ -122,3 +122,28 @@ describe('dados compartilhados', () => {
     assert.ok(maria.data.tasks.some((t) => t.title === 'Gravação atrasada'));
   });
 });
+
+describe('arquivos das provas (Storage)', () => {
+  it('envia o arquivo autenticado para o bucket, com a chave pública e o token da sessão', async () => {
+    const calls: Array<{ url: string; method: string; auth: string | null; apikey: string | null; type: string | null }> = [];
+    const recording: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.includes('/storage/v1/')) {
+        const headers = new Headers(init?.headers);
+        calls.push({ url, method: init?.method ?? 'GET', auth: headers.get('Authorization'), apikey: headers.get('apikey'), type: headers.get('Content-Type') });
+        return new Response(JSON.stringify({ Key: 'ok' }), { status: 200 });
+      }
+      return fetch(input, init);
+    };
+    const client = new SupabaseClient(config, { storage: memoryStorage(), fetch: recording });
+    await client.signIn(...MARIA);
+    const response = await client.files('object/provas/2026-11/print.png', { method: 'POST', body: new Blob(['x'], { type: 'image/png' }), headers: { 'Content-Type': 'image/png' } });
+    assert.equal(response.status, 200);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, `${config.supabaseUrl}/storage/v1/object/provas/2026-11/print.png`);
+    assert.equal(calls[0].method, 'POST');
+    assert.match(calls[0].auth ?? '', /^Bearer /);
+    assert.equal(calls[0].apikey, FAKE_ANON_KEY);
+    assert.equal(calls[0].type, 'image/png');
+  });
+});
