@@ -122,25 +122,41 @@ const GROUPS: NavGroup[] = [
 // ---------------------------------------------------------------- Grupos abertos
 
 const OPEN_KEY = 'mawe-os:menu-aberto';
-let openGroups: Set<string> | null = null;
+/** Grupos abertos na primeira vez (depois vale o que cada pessoa escolheu). */
+const DEFAULT_OPEN = ['comercial', 'operacoes'];
+/** Escolha de cada grupo: `true` aberto, `false` fechado. Sem escolha = padrão. */
+let groupState: Record<string, boolean> | null = null;
 
-function loadOpenGroups(): Set<string> {
-  if (openGroups) return openGroups;
+function loadGroupState(): Record<string, boolean> {
+  if (groupState) return groupState;
+  groupState = {};
   try {
-    const saved = JSON.parse(window.localStorage.getItem(OPEN_KEY) ?? 'null');
-    openGroups = new Set(Array.isArray(saved) ? saved.filter((x) => typeof x === 'string') : ['comercial', 'operacoes']);
+    const saved: unknown = JSON.parse(window.localStorage.getItem(OPEN_KEY) ?? 'null');
+    if (Array.isArray(saved)) {
+      // Formato antigo: só a lista dos abertos.
+      for (const id of GROUPS.map((g) => g.id)) groupState[id] = saved.includes(id);
+    } else if (saved && typeof saved === 'object') {
+      for (const [id, open] of Object.entries(saved)) if (typeof open === 'boolean') groupState[id] = open;
+    }
   } catch {
-    openGroups = new Set(['comercial', 'operacoes']);
+    /* sem armazenamento: usa o padrão */
   }
-  return openGroups;
+  return groupState;
 }
 
-function saveOpenGroups(): void {
+function saveGroupState(): void {
   try {
-    window.localStorage.setItem(OPEN_KEY, JSON.stringify([...loadOpenGroups()]));
+    window.localStorage.setItem(OPEN_KEY, JSON.stringify(loadGroupState()));
   } catch {
     /* sem armazenamento: vale até recarregar */
   }
+}
+
+/** Aberto se a pessoa abriu; fechado se ela fechou; senão, aberto quando é a área atual ou do padrão. */
+function isGroupOpen(group: NavGroup, hasActive: boolean): boolean {
+  const choice = loadGroupState()[group.id];
+  if (choice !== undefined) return choice;
+  return hasActive || DEFAULT_OPEN.includes(group.id);
 }
 
 function visible(item: NavLink): boolean {
@@ -165,12 +181,13 @@ function navLink(item: NavLink, route: Route, sub = false): SafeHtml {
 function navGroup(group: NavGroup, route: Route): SafeHtml {
   const items = group.items.filter(visible);
   const hasActive = items.some((i) => i.match(route));
-  const open = hasActive || loadOpenGroups().has(group.id);
+  const open = isGroupOpen(group, hasActive);
   const alerts = items.filter((i) => i.countTone === 'alert').reduce((s, i) => s + (i.count?.() ?? 0), 0);
+  const active = items.find((i) => i.match(route));
   return html`<div class="${cx('nav-group', open && 'is-open', hasActive && 'has-active')}">
     <button type="button" class="nav__item nav-group__toggle" data-action="nav:group" data-id="${group.id}" aria-expanded="${open ? 'true' : 'false'}" aria-controls="nav-${group.id}">
       ${icon(group.icon, 18)}
-      <span class="nav__label">${group.label}</span>
+      <span class="nav__label">${group.label}${!open && active ? html`<small class="nav-group__current">${active.label}</small>` : ''}</span>
       ${!open && alerts ? html`<span class="nav__count nav__count--alert">${alerts}</span>` : ''}
       <span class="nav-group__chevron" aria-hidden="true">${icon('chevronRight', 14)}</span>
     </button>
@@ -236,7 +253,7 @@ export function renderSidebar(route: Route): SafeHtml {
     <nav class="nav" aria-label="Navegação principal">
       <span class="nav__group">Acesso rápido</span>
       ${QUICK.map((item) => navLink(item, route))}
-      <span class="nav__group">Áreas</span>
+      <span class="nav__group nav__group--row">Áreas <button type="button" class="nav__collapse" data-action="nav:collapse-all">Fechar todas</button></span>
       ${GROUPS.map((g) => navGroup(g, route))}
     </nav>
 
@@ -297,11 +314,15 @@ registerActions({
   'nav:open': () => document.body.classList.add('nav-open'),
   'nav:close': () => document.body.classList.remove('nav-open'),
   'nav:group': (el) => {
-    const groups = loadOpenGroups();
-    const id = el.dataset.id!;
-    if (el.getAttribute('aria-expanded') === 'true') groups.delete(id);
-    else groups.add(id);
-    saveOpenGroups();
+    const state = loadGroupState();
+    state[el.dataset.id!] = el.getAttribute('aria-expanded') !== 'true';
+    saveGroupState();
+    rerender();
+  },
+  'nav:collapse-all': () => {
+    const state = loadGroupState();
+    for (const g of GROUPS) state[g.id] = false;
+    saveGroupState();
     rerender();
   },
   'quick:add': () => {

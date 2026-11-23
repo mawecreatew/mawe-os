@@ -144,6 +144,19 @@ try {
       assert.equal(await page.locator('.sidebar .nav__item.is-active .nav__label').innerText(), label);
     }
     assert.equal(await page.locator('.sidebar .nav__item', { hasText: 'Central de agentes' }).count(), 0, 'agentes saiu do menu');
+    // Clicar no grupo esconde os itens de baixo, mesmo sendo a área atual, e lembra depois de recarregar.
+    await go('#/comercial');
+    const comercial = page.locator('.sidebar .nav-group__toggle', { hasText: 'Comercial' });
+    assert.equal(await comercial.getAttribute('aria-expanded'), 'true');
+    await comercial.click();
+    await page.locator('#nav-comercial').waitFor({ state: 'hidden' });
+    assert.equal(await page.locator('.sidebar a.nav__item', { has: page.getByText('Propostas e contratos', { exact: true }) }).isVisible(), false);
+    await page.reload();
+    await page.waitForSelector('.page-title');
+    assert.equal(await page.locator('.sidebar .nav-group__toggle', { hasText: 'Comercial' }).getAttribute('aria-expanded'), 'false');
+    await page.locator('.sidebar .nav__collapse').click();
+    assert.equal(await page.locator('.sidebar .nav-group__items:visible').count(), 0, 'Fechar todas');
+    await page.evaluate(() => localStorage.removeItem('mawe-os:menu-aberto'));
   });
 
   await step('cria uma tarefa e ela aparece para a equipe', async () => {

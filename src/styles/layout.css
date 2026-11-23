@@ -405,5 +405,13 @@
 .nav-group.is-open .nav-group__chevron { transform: rotate(90deg); }
 .nav-group.has-active > .nav-group__toggle { color: var(--menu-text); }
 .nav-group__items { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 6px 21px; padding-left: 8px; border-left: 1px solid var(--menu-line); }
+.nav-group__items[hidden] { display: none; }
+.nav-group__toggle .nav__label { display: flex; flex-direction: column; line-height: 1.25; }
+.nav-group__current { font-size: 11px; color: var(--menu-accent); font-weight: 500; }
+.nav-group__chevron { margin-left: auto; padding: 4px; border-radius: 6px; }
+.nav-group__toggle:hover .nav-group__chevron { background: var(--menu-hover); opacity: 1; }
+.nav__group--row { display: flex; align-items: center; justify-content: space-between; }
+.nav__collapse { border: 0; background: none; padding: 2px 4px; font: inherit; font-size: 10px; letter-spacing: 0.06em; text-transform: none; color: var(--menu-text-2); cursor: pointer; text-decoration: underline; }
+.nav__collapse:hover { color: var(--menu-text); }
 .nav__item--sub { padding: 6px 10px; font-size: var(--text-sm); }
 .nav__item--sub.is-active::before { left: -10px; }
