@@ -43,13 +43,17 @@ export function proposalsOfClient(data: AppData, clientId: ID): Proposal[] {
   return data.proposals.filter((p) => p.clientId === clientId);
 }
 
-/** Abas do Comercial: oportunidades (funil) e propostas. */
-export function commercialTabs(active: 'oportunidades' | 'propostas' | 'relatorios'): SafeHtml {
+/** Abas da Prospecção: quem chamar hoje, funil, propostas e relatórios. */
+export function commercialTabs(active: 'hoje' | 'oportunidades' | 'propostas' | 'relatorios'): SafeHtml {
   const count = store().data.proposals.filter((p) => p.status === 'enviada').length;
-  return html`<nav class="subnav" aria-label="Seções do Comercial">
-    <a class="${cx('subnav__item', active === 'oportunidades' && 'is-active')}" href="#/comercial" ${active === 'oportunidades' ? html`aria-current="page"` : ''}>${icon('kanban', 15)} Oportunidades</a>
-    <a class="${cx('subnav__item', active === 'propostas' && 'is-active')}" href="#/comercial/propostas" ${active === 'propostas' ? html`aria-current="page"` : ''}>${icon('file', 15)} Propostas e contratos ${count ? html`<span class="segmented__count">${count}</span>` : ''}</a>
-    <a class="${cx('subnav__item', active === 'relatorios' && 'is-active')}" href="#/comercial/relatorios" ${active === 'relatorios' ? html`aria-current="page"` : ''}>${icon('chart', 15)} Relatórios</a>
+  const tab = (id: typeof active, href: string, iconName: Parameters<typeof icon>[0], label: string, extra: SafeHtml | '' = '') =>
+    html`<a class="${cx('subnav__item', active === id && 'is-active')}" href="${href}" ${active === id ? html`aria-current="page"` : ''}>${icon(iconName, 15)} ${label} ${extra}</a>`;
+  return html`<nav class="subnav subnav--scroll" aria-label="Seções da Prospecção">
+    ${tab('hoje', '#/comercial', 'target', 'Quem chamar hoje')}
+    ${tab('oportunidades', '#/comercial/funil', 'kanban', 'Funil')}
+    ${tab('propostas', '#/comercial/propostas', 'file', 'Propostas e contratos', count ? html`<span class="segmented__count">${count}</span>` : '')}
+    ${tab('relatorios', '#/comercial/relatorios', 'chart', 'Relatórios')}
+    <a class="subnav__item" href="#/biblioteca">${icon('message', 15)} Mensagens prontas</a>
   </nav>`;
 }
 
@@ -322,7 +326,7 @@ export function renderProposals(): SafeHtml {
 
   return html`
     ${pageHeader({
-      title: 'Comercial',
+      title: 'Propostas e contratos',
       subtitle: `${pluralize(sent.length, 'proposta aguardando resposta', 'propostas aguardando resposta')}`,
       actions: button({ label: 'Nova proposta', action: 'proposal:new', variant: 'primary', icon: 'plus' }),
     })}

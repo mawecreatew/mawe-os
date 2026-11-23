@@ -7,7 +7,8 @@
  */
 export const BRAND = {
   agencyName: 'Mawe Create',
-  productName: 'Mawe OS',
+  /** Nome que aparece embaixo da logo, no menu. */
+  productName: 'Central',
   /** Logo horizontal "Mawe Create" sobre o marrom oficial (#2A211C), o mesmo do menu. */
   logoHorizontal: ['public/brand/logo-horizontal.png'],
   /** Monograma "M" dentro do arco (foto de perfil). */

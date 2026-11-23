@@ -33,6 +33,7 @@ import { approvalList } from './approvals.ts';
 import { processSteps } from './processes.ts';
 import { allowed, requirePermission, rerender, store, today } from '../app/context.ts';
 import type { View } from '../app/view.ts';
+import { renderHours } from './hours.ts';
 import { badge, button, demoTag, emptyState, externalLink, pageHeader, panel, people, progressBar, segmented } from '../ui/components.ts';
 import { peopleField, readPeople } from '../ui/people-picker.ts';
 import { formActions, selectField, textareaField, textField } from '../ui/forms.ts';
@@ -597,6 +598,7 @@ function renderDetail(project: Project): SafeHtml {
       </div>
 
       <aside class="detail-grid__side">
+        ${renderHours(project)}
         ${panel({
           title: usesRepository(type) ? 'Links' : 'Informações',
           icon: 'link',

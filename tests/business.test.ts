@@ -102,7 +102,7 @@ describe('funil configurável', () => {
     updatePipelineStage(data, 'ganho', { label: 'Fechado', tone: 'info' });
     assert.equal(pipelineStages(data).at(-2)?.label, 'Fechado');
     assert.equal(pipelineStages(data).at(-2)?.tone, 'success', 'cor das etapas finais é fixa');
-    assert.throws(() => removePipelineStage(data, 'perdido', 'identificada', ctx), /finais/);
+    assert.throws(() => removePipelineStage(data, 'perdido', 'abordar', ctx), /finais/);
     const before = pipelineSummary(data, TODAY);
     assert.ok(before.wonCount > 0 && before.lostCount > 0);
   });
@@ -112,12 +112,12 @@ describe('funil configurável', () => {
     assert.ok(inStage.length > 0);
     const total = data.opportunities.length;
     assert.throws(() => removePipelineStage(data, 'negociacao', null, ctx), /Escolha para qual etapa/);
-    const moved = removePipelineStage(data, 'negociacao', 'qualificada', ctx);
+    const moved = removePipelineStage(data, 'negociacao', 'abordar', ctx);
     assert.equal(moved, inStage.length);
     assert.equal(data.opportunities.length, total);
     for (const o of inStage) {
       const now = data.opportunities.find((x) => x.id === o.id)!;
-      assert.equal(now.stage, 'qualificada');
+      assert.equal(now.stage, 'abordar');
       assert.match(now.history.at(-1)!.text, /removida do funil/);
     }
     assert.ok(!pipelineStages(data).some((s) => s.id === 'negociacao'));

@@ -86,6 +86,32 @@ Se a operação lançar erro, nada é alterado e o erro aparece como aviso.
   `--ink-*` para texto forte e `--paper-*` para fundos claros, o que permite temas escuros sem
   mexer em cada componente. Documentos usam `--doc-*`, iguais em qualquer tema.
 
+## Áreas adicionadas na v0.8 (Central MaweCreate)
+
+- `domain/cadence.ts`: cadência de prospecção. `migrateToCadence` (migração única
+  `2026-11-cadencia`) troca as etapas abertas pelas da cadência e leva cada lead para a etapa
+  mais parecida pelo nome; etapas sem par ficam. `PipelineStage.cadence` ([3, 7, 15]) faz
+  `followStatus` calcular cada follow-up a partir do primeiro contato sem resposta;
+  `Opportunity.cadenceFrom` recomeça a contagem no "Tentar de novo". `callToday` monta a lista
+  "Quem chamar hoje".
+- `domain/workspace.ts`: notas (`AppData.notes`), chat (`AppData.chat`, últimas 500 mensagens,
+  `chatRead` por pessoa), metas da semana e ideias da agência, treinamento
+  (`AppData.training`), horas (`Project.timeLogs` e cronômetro em `AppData.timers`) e divisão
+  do dinheiro (`AppData.moneySplit`).
+- `domain/clientcare.ts`: onboarding (`Client.onboarding`), briefing (`Client.briefing` e
+  `AppData.briefingQuestions`), arquivos (`Client.files`, no mesmo bucket `provas`, pasta
+  `clientes/`), acessos (`Client.accesses`, recusa texto que parece senha), contratos
+  (`AppData.contracts`), origem e indicação, lista A a Z.
+- `domain/marketing.ts`: ideias de posts, seguidores mês a mês, cases, links do portfólio,
+  origem dos clientes e o relatório do mês. `domain/kit.ts`: orçamento rápido.
+- `core/xlsx.ts`: planilha .xlsx sem dependências (ZIP sem compressão + XML). `domain/backup.ts`
+  monta as abas.
+- Menu (`app/shell.ts`): acesso rápido + grupos que abrem e fecham (estado em
+  `localStorage`, chave `mawe-os:menu-aberto`). Tema Rosa bebê usa os tokens `--menu-*`
+  (menu claro).
+- `data/store.ts`: em conflito de versão, recarrega e refaz a mesma operação uma vez.
+- No chat a sincronização roda a cada 5 segundos; nas outras telas, a cada 20.
+
 ## Permissões
 
 `domain/permissions.ts` define o que cada papel pode fazer (`socio`, `colaborador`).

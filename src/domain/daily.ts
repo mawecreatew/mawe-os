@@ -7,6 +7,8 @@ import type { ActionContext } from './operations.ts';
 import type { AgencyProfile, AppData, DailyNote, DailyPriority, ID } from './types.ts';
 
 export const PRIORITIES_PER_DAY = 3;
+/** Com o botão "+ Mais uma prioridade" dá para chegar a este limite. */
+export const MAX_PRIORITIES = 8;
 /** Quantos dias de rotina ficam guardados. */
 const KEEP_DAYS = 60;
 
@@ -18,10 +20,11 @@ export function dayOf(data: AppData, date: ISODate): DailyNote {
   return data.daily?.[date] ?? emptyDay();
 }
 
-/** Sempre 3 posições (vazias quando a pessoa ainda não escreveu). */
+/** Pelo menos 3 posições (vazias quando a pessoa ainda não escreveu); mais se ela acrescentou. */
 export function prioritiesOf(data: AppData, date: ISODate, userId: ID): DailyPriority[] {
   const list = dayOf(data, date).priorities[userId] ?? [];
-  return Array.from({ length: PRIORITIES_PER_DAY }, (_, i) => list[i] ?? { text: '', done: false });
+  const length = Math.min(MAX_PRIORITIES, Math.max(PRIORITIES_PER_DAY, list.length));
+  return Array.from({ length }, (_, i) => list[i] ?? { text: '', done: false });
 }
 
 function editDay(draft: AppData, date: ISODate): DailyNote {
@@ -40,16 +43,30 @@ function editPriorities(draft: AppData, date: ISODate, userId: ID): DailyPriorit
   return list;
 }
 
-export function setPriority(draft: AppData, date: ISODate, index: number, text: string, ctx: ActionContext): void {
-  if (index < 0 || index >= PRIORITIES_PER_DAY) throw new Error('Prioridade inválida.');
+/** Abre mais uma linha de prioridade (até o limite). */
+export function addPrioritySlot(draft: AppData, date: ISODate, ctx: ActionContext): void {
   const list = editPriorities(draft, date, ctx.userId);
+  if (list.length >= MAX_PRIORITIES) throw new Error(`Dá para ter até ${MAX_PRIORITIES} prioridades por dia.`);
+  list.push({ text: '', done: false });
+}
+
+/** Tira uma prioridade extra (as 3 primeiras ficam sempre). */
+export function removePrioritySlot(draft: AppData, date: ISODate, index: number, ctx: ActionContext): void {
+  const list = editPriorities(draft, date, ctx.userId);
+  if (index < PRIORITIES_PER_DAY || index >= list.length) throw new Error('Só as prioridades extras podem ser tiradas.');
+  list.splice(index, 1);
+}
+
+export function setPriority(draft: AppData, date: ISODate, index: number, text: string, ctx: ActionContext): void {
+  const list = editPriorities(draft, date, ctx.userId);
+  if (index < 0 || index >= list.length) throw new Error('Prioridade inválida.');
   list[index].text = text.trim();
   if (!list[index].text) list[index].done = false;
 }
 
 export function togglePriority(draft: AppData, date: ISODate, index: number, ctx: ActionContext): void {
-  if (index < 0 || index >= PRIORITIES_PER_DAY) throw new Error('Prioridade inválida.');
   const list = editPriorities(draft, date, ctx.userId);
+  if (index < 0 || index >= list.length) throw new Error('Prioridade inválida.');
   if (!list[index].text) throw new Error('Escreva a prioridade antes de marcar como feita.');
   list[index].done = !list[index].done;
 }

@@ -132,11 +132,11 @@ describe('tarefas', () => {
 describe('comercial', () => {
   it('registra no histórico a mudança de etapa', () => {
     const before = data.opportunities.find((o) => o.id === 'opp_ferro')!.history.length;
-    moveOpportunity(data, 'opp_ferro', 'abordagem_preparada', ctx);
+    moveOpportunity(data, 'opp_ferro', 'aquecimento', ctx);
     const opp = data.opportunities.find((o) => o.id === 'opp_ferro')!;
-    assert.equal(opp.stage, 'abordagem_preparada');
+    assert.equal(opp.stage, 'aquecimento');
     assert.equal(opp.history.length, before + 1);
-    assert.match(opp.history.at(-1)!.text, /Qualificada → Abordagem preparada/);
+    assert.match(opp.history.at(-1)!.text, /Pronto pra abordar → Aquecimento/);
   });
 
   it('ignora anotações vazias', () => {

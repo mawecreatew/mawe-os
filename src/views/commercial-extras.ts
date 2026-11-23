@@ -182,7 +182,7 @@ function openWhatsapp(oppId: string): void {
   const first = templates[0];
   openModal({
     title: `WhatsApp para ${opp.company}`,
-    description: 'Escolha um modelo da Biblioteca, ajuste o texto e abra o WhatsApp. O contato fica registrado sozinho.',
+    description: 'Escolha uma mensagem pronta, ajuste o texto e abra o WhatsApp. O contato fica registrado sozinho.',
     size: 'lg',
     body: html`
       <form class="form" data-form="whatsapp:send" data-id="${opp.id}">
@@ -211,7 +211,7 @@ function openWhatsapp(oppId: string): void {
           emptyLabel: `Manter em "${stageLabel(data, opp.stage)}"`,
           options: pipelineStages(data).filter((s) => s.id !== opp.stage).map((s) => ({ value: s.id, label: s.label })),
         })}
-        ${templates.length ? '' : notice({ title: 'Nenhum modelo de mensagem ainda', text: html`Cadastre seus textos de abordagem em <a href="#/biblioteca">Biblioteca</a> (categoria "Mensagem comercial").` })}
+        ${templates.length ? '' : notice({ title: 'Nenhum modelo de mensagem ainda', text: html`Cadastre seus textos de abordagem em <a href="#/biblioteca">Mensagens prontas</a> (categoria "Mensagem comercial").` })}
         ${formActions('Abrir WhatsApp')}
       </form>`,
   });
@@ -275,12 +275,12 @@ export function renderReports(): SafeHtml {
   const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : '—');
   const maxWeek = Math.max(1, ...report.weekly.map((w) => Math.max(w.sent, w.replies)));
   return html`
-    ${pageHeader({ title: 'Comercial', subtitle: 'Relatórios: o que funciona e onde vocês perdem clientes' })}
+    ${pageHeader({ title: 'Relatórios comerciais', subtitle: 'Taxa de resposta, mensagens enviadas, de onde vêm os leads e onde vocês perdem clientes' })}
     ${commercialTabs('relatorios')}
 
     <div class="stats stats--compact">
       ${statCard({ label: 'Contatos nas últimas 8 semanas', value: String(report.weekly.reduce((s, w) => s + w.sent, 0)), hint: `${report.weekly.reduce((s, w) => s + w.replies, 0)} respostas` })}
-      ${statCard({ label: 'Tempo médio até fechar', value: report.avgDaysToClose === null ? '—' : pluralize(Math.round(report.avgDaysToClose), 'dia', 'dias'), hint: 'Do cadastro até "Ganho"' })}
+      ${statCard({ label: 'Tempo médio até fechar', value: report.avgDaysToClose === null ? '—' : pluralize(Math.round(report.avgDaysToClose), 'dia', 'dias'), hint: 'Do cadastro até "Fechou"' })}
       ${statCard({ label: 'Tentativas até responder', value: report.avgAttemptsToReply === null ? '—' : report.avgAttemptsToReply.toLocaleString('pt-BR', { maximumFractionDigits: 1 }), hint: 'Média de contatos antes da 1ª resposta' })}
       ${statCard({ label: 'Leads que não fecharam', value: String(report.lostReasons.reduce((s, r) => s + r.count, 0) + report.lostWithoutReason), hint: report.lostWithoutReason ? `${report.lostWithoutReason} sem motivo anotado` : undefined })}
     </div>

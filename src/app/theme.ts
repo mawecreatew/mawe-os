@@ -18,6 +18,7 @@ export const THEMES: ThemeOption[] = [
   { id: 'mawe', label: 'Mawe', description: 'Creme e marrom, o padrão da marca', menu: '#2a211c' },
   { id: 'vinho', label: 'Vinho', description: 'Bordô e creme', menu: '#4a1621' },
   { id: 'oliva', label: 'Oliva', description: 'Verde oliva e linho', menu: '#2c3520' },
+  { id: 'rosabebe', label: 'Rosa bebê', description: 'Fundo rosa bebê e menu rosa claro', menu: '#f6d3de' },
   { id: 'rose', label: 'Rosé', description: 'Rosa queimado e ameixa', menu: '#43202f' },
   { id: 'mar', label: 'Mar', description: 'Azul petróleo e areia', menu: '#1d3036' },
   { id: 'noite', label: 'Noite', description: 'Escuro, em tons de café', menu: '#0f0b08' },

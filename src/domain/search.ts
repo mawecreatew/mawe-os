@@ -21,7 +21,7 @@ export const SEARCH_KIND_LABELS: Record<SearchKind, string> = {
   tarefa: 'Tarefa',
   servico: 'Serviço',
   proposta: 'Proposta',
-  biblioteca: 'Biblioteca',
+  biblioteca: 'Mensagens prontas',
 };
 
 function score(term: string, title: string, extra: string): number | null {

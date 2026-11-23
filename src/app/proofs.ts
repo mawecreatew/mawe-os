@@ -52,15 +52,18 @@ async function shrinkImage(file: File): Promise<string> {
   return canvas.toDataURL('image/jpeg', 0.75);
 }
 
-/** Envia o arquivo e devolve a referência que fica salva na aprovação. */
-export async function storeProof(file: File): Promise<ApprovalProof> {
+/**
+ * Envia o arquivo e devolve a referência que fica salva na aprovação (ou nos
+ * arquivos do cliente, com `folder` = "clientes/").
+ */
+export async function storeProof(file: File, folder = ''): Promise<ApprovalProof> {
   const isImage = file.type.startsWith('image/');
   const isPdf = file.type === 'application/pdf';
   if (!isImage && !isPdf) throw new Error('Use um print (PNG, JPG ou WEBP) ou um PDF.');
   if (file.size > MAX_UPLOAD) throw new Error('Arquivo grande demais (máximo 10 MB).');
   const session = auth();
   if (session.mode === 'supabase') {
-    const path = `${new Date().toISOString().slice(0, 7)}/${createId('prova')}-${safeName(file.name)}`;
+    const path = `${folder}${new Date().toISOString().slice(0, 7)}/${createId(folder ? 'arq' : 'prova')}-${safeName(file.name)}`;
     const response = await session.client.files(`object/${BUCKET}/${path}`, {
       method: 'POST',
       body: file,
@@ -95,7 +98,7 @@ function dataUrlToBlob(dataUrl: string): Blob {
 
 const cache = new Map<string, string>();
 
-/** Encontra a prova pelo id da aprovação (definido pelo main). */
+/** Encontra a prova pelo id da aprovação ou do arquivo do cliente (definido pelo main). */
 let lookupProof: (approvalId: string) => ApprovalProof | undefined = () => undefined;
 export function setProofLookup(fn: (approvalId: string) => ApprovalProof | undefined): void {
   lookupProof = fn;

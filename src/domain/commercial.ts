@@ -120,7 +120,8 @@ export function lastReplyDate(opp: Opportunity): ISODate | null {
 /** Tentativas desde a última resposta do cliente (o que conta para "parou de responder"). */
 export function attemptsWithoutReply(opp: Opportunity): number {
   const reply = lastReplyDate(opp);
-  return sentContacts(opp).filter((c) => !reply || c.date > reply).length;
+  const from = opp.cadenceFrom ?? null;
+  return sentContacts(opp).filter((c) => (!reply || c.date > reply) && (!from || c.date >= from)).length;
 }
 
 export interface ContactInput {
@@ -246,7 +247,19 @@ export function followStatus(data: Pick<AppData, 'pipelineStages'>, opp: Opportu
 
   const last = lastSentDate(opp);
   const waitingDays = last ? Math.max(0, dayDiff(last, today)) : null;
-  const followUpDays = stageInfo(data, opp.stage)?.followUpDays ?? DEFAULT_FOLLOW_UP_DAYS;
+  const stage = stageInfo(data, opp.stage);
+  if (stage?.cadence?.length) {
+    // Cadência: cada follow-up vence X dias depois do primeiro contato sem resposta.
+    if (attempts > stage.cadence.length) {
+      return { ...base, waitingDays, state: 'sem_resposta', label: `${attempts} tentativas sem resposta · mover para depois`, tone: 'neutral', needsAction: true };
+    }
+    const due = cadenceDueDate(opp, stage.cadence);
+    if (due && due <= today) {
+      return { ...base, waitingDays, state: 'follow_up', label: `Hora do ${attempts}º follow-up`, tone: 'accent', needsAction: true };
+    }
+    if (due) return { ...base, waitingDays, state: 'aguardando', label: `Próximo follow-up ${formatShortDate(due)}`, tone: 'neutral', needsAction: false };
+  }
+  const followUpDays = stage?.followUpDays ?? DEFAULT_FOLLOW_UP_DAYS;
   if (attempts >= MAX_ATTEMPTS) {
     return { ...base, waitingDays, state: 'sem_resposta', label: `${attempts} tentativas sem resposta`, tone: 'neutral', needsAction: false };
   }
@@ -256,6 +269,22 @@ export function followStatus(data: Pick<AppData, 'pipelineStages'>, opp: Opportu
   if (date) return { ...base, waitingDays, state: 'agendado', label: `Lembrete · ${formatShortDate(date)}`, tone: 'neutral', needsAction: false };
   const label = waitingDays === null ? 'Aguardando o cliente' : waitingDays === 0 ? 'Aguardando desde hoje' : `Aguardando há ${waitingDays} ${waitingDays === 1 ? 'dia' : 'dias'}`;
   return { ...base, waitingDays, state: 'aguardando', label, tone: 'neutral', needsAction: false };
+}
+
+/** Primeiro contato enviado desde a última resposta do cliente. */
+export function firstSentSinceReply(opp: Opportunity): ISODate | null {
+  const reply = lastReplyDate(opp);
+  const from = opp.cadenceFrom ?? null;
+  const dates = sentContacts(opp).map((c) => c.date).filter((d) => (!reply || d > reply) && (!from || d >= from)).sort();
+  return dates[0] ?? null;
+}
+
+/** Quando vence o próximo follow-up da cadência (`null` = ainda sem contato ou cadência acabou). */
+export function cadenceDueDate(opp: Opportunity, cadence: readonly number[]): ISODate | null {
+  const attempts = attemptsWithoutReply(opp);
+  const first = firstSentSinceReply(opp);
+  if (!first || attempts < 1 || attempts > cadence.length) return null;
+  return addDays(first, cadence[attempts - 1]);
 }
 
 export function needsAction(data: Pick<AppData, 'pipelineStages'>, opp: Opportunity, today: ISODate): boolean {

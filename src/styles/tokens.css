@@ -121,6 +121,25 @@
   --paper-200: var(--cream-200);
   --paper-300: var(--cream-300);
 
+  /* Menu lateral (no tema Rosa bebê ele fica claro). */
+  --menu-bg: var(--brown-900);
+  --menu-text: var(--text-on-dark);
+  --menu-text-2: var(--text-on-dark-2);
+  --menu-hover: rgb(243 235 223 / 0.06);
+  --menu-active: rgb(243 235 223 / 0.1);
+  --menu-active-text: var(--cream-0);
+  --menu-line: rgb(243 235 223 / 0.08);
+  --menu-accent: var(--gold-500);
+  --menu-count: rgb(243 235 223 / 0.12);
+  --menu-button-line: rgb(243 235 223 / 0.28);
+  --menu-accent-text: #241a12;
+
+  /* Cores das notas do bloco de notas (misturadas com o fundo do tema). */
+  --note-rosa: #e7a3b5; --note-verde: #9ccaa5; --note-azul: #9db8d8; --note-amarelo: #edd08a;
+
+  /* Arcos do Início (uma cor por atalho). */
+  --arch-gold: #c9a46a; --arch-rose: #c98b8b; --arch-plum: #a77c9b; --arch-blue: #7f95b5; --arch-green: #7fa58a; --arch-amber: #d0a15a;
+
   /* Fundo da logo oficial (o arquivo PNG não é transparente). */
   --logo-plate: #29211b;
 
@@ -139,6 +158,7 @@
   --sample-vinho-bg: #f6eee9;   --sample-vinho-menu: #4a1621;   --sample-vinho-accent: #b0596a;
   --sample-oliva-bg: #f0eee4;   --sample-oliva-menu: #2c3520;   --sample-oliva-accent: #9a9a4c;
   --sample-rose-bg: #f8efee;    --sample-rose-menu: #43202f;    --sample-rose-accent: #c07f8b;
+  --sample-rosabebe-bg: #fbe6ec; --sample-rosabebe-menu: #f3cbd7; --sample-rosabebe-accent: #c2667f;
   --sample-mar-bg: #eef1ef;     --sample-mar-menu: #1d3036;     --sample-mar-accent: #6a9c97;
   --sample-noite-bg: #17110d;   --sample-noite-menu: #0f0b08;   --sample-noite-accent: #c9a46a;
   --sample-grafite-bg: #141414; --sample-grafite-menu: #0b0b0b; --sample-grafite-accent: #c8b48e;
@@ -166,6 +186,17 @@
   --gold-600: #9a5866; --gold-500: #c07f8b; --gold-300: #e4bfc6; --gold-100: #f8e6e9;
   --text: #2d1720; --text-2: #5f4049; --text-3: #8b6d76; --line: #ecdcdb; --line-strong: #e2cccc;
   --accent-fg: #93515f; --chart-grid: #f0e2e1; --focus-ring: 0 0 0 3px rgb(192 127 139 / 0.35);
+}
+:root[data-tema="rosabebe"] {
+  --brown-950: #3a1626; --brown-900: #4f2134; --brown-800: #b3566f; --brown-700: #9c4860; --brown-600: #7f4a5c; --brown-500: #a87587; --brown-300: #e2b6c3;
+  --cream-0: #fffafc; --cream-50: #fff4f7; --cream-100: #fbe6ec; --cream-200: #f6d7e0; --cream-300: #eec3cf;
+  --gold-600: #a8506a; --gold-500: #c2667f; --gold-300: #eab4c3; --gold-100: #fbe1e8;
+  --text: #3b1d2a; --text-2: #6c4355; --text-3: #9a7383; --line: #f1d3dc; --line-strong: #e9c1cd;
+  --accent-fg: #a1435d; --chart-grid: #f5dbe2; --chart-line: #7f2f48; --chart-fill: #d8869c; --focus-ring: 0 0 0 3px rgb(194 102 127 / 0.35);
+  --ink-950: #3a1626; --ink-900: #4f2134; --ink-800: #6b2f47; --ink-700: #7e4258;
+  --menu-bg: #f6d3de; --menu-text: #4f2134; --menu-text-2: #7d4b5f; --menu-hover: rgb(79 33 52 / 0.06); --menu-active: #fffafc; --menu-active-text: #3a1626;
+  --menu-line: rgb(79 33 52 / 0.12); --menu-accent: #c2667f; --menu-accent-text: #fffafc; --menu-count: rgb(79 33 52 / 0.1); --menu-button-line: #c2667f;
+  --logo-plate: #4f2134;
 }
 :root[data-tema="mar"] {
   --brown-950: #0f1c20; --brown-900: #1d3036; --brown-800: #263f46; --brown-700: #335259; --brown-600: #4a6c72; --brown-500: #6b8b90; --brown-300: #a9c1c2;

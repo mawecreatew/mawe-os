@@ -7,7 +7,7 @@ import { whatsappLink } from '../domain/commercial.ts';
 import { deleteSubscription, paySubscription, saveSubscription, subscriptionDates, toggleFinanceEntryPaid, type SubscriptionInput } from '../domain/finance.ts';
 import { externalLink } from '../ui/components.ts';
 import { registerActions, registerForms } from '../core/events.ts';
-import { formatCurrency, parseMoney, pluralize } from '../core/format.ts';
+import { formatCurrency, normalizeText, parseMoney, pluralize } from '../core/format.ts';
 import { cx, html, multiline, type SafeHtml } from '../core/html.ts';
 import { navigate, type Route } from '../core/router.ts';
 import { CONTRACT_STATUSES, PROJECT_STATUSES, PROPOSAL_STATUSES, labelOf, projectStatusLabel, toneOf } from '../domain/labels.ts';
@@ -27,7 +27,7 @@ import {
 import { peopleNames } from '../domain/people.ts';
 import { clientFinance, findClient, projectProgress, projectsOfClient, tasksRelatedTo } from '../domain/selectors.ts';
 import type { Client, ContractStatus } from '../domain/types.ts';
-import { allowed, requirePermission, store, today } from '../app/context.ts';
+import { allowed, requirePermission, rerender, store, today } from '../app/context.ts';
 import type { View } from '../app/view.ts';
 import { badge, button, demoTag, dueDate, emptyState, notice, pageHeader, panel, progressBar } from '../ui/components.ts';
 import { formActions, selectField, textareaField, textField } from '../ui/forms.ts';
@@ -37,6 +37,8 @@ import { taskList, taskRow } from '../ui/task-row.ts';
 import { openProjectForm } from './projects.ts';
 import { openProposalForm, proposalsOfClient } from './proposals.ts';
 import { approvalList } from './approvals.ts';
+import { clientsAZ, onboardingProgress } from '../domain/clientcare.ts';
+import { CLIENT_TABS, clientMoment, clientTabNav, onboardingChecklist, originSummary, renderClientTab, type ClientTab } from './client-tabs.ts';
 
 function openClientForm(client?: Client): void {
   const v: ClientInput = client ?? { company: '', contactName: '', segment: '', contact: {}, city: '', contractStatus: 'proposta_enviada', nextStep: '', notes: '' };
@@ -265,61 +267,80 @@ registerActions({
   },
 });
 
+const listUi = { search: '' };
+
 function renderList(): SafeHtml {
   const { data } = store();
   const t = today();
   const finance = allowed('finance:view');
-  const clients = [...data.clients].sort((a, b) => a.company.localeCompare(b.company));
-  const active = clients.filter((c) => c.contractStatus !== 'concluido' && c.contractStatus !== 'pausado').length;
+  const q = normalizeText(listUi.search.trim());
+  const groups = clientsAZ(data)
+    .map((g) => ({ ...g, clients: g.clients.filter((c) => !q || normalizeText(`${c.company} ${c.contactName} ${c.segment} ${c.city}`).includes(q)) }))
+    .filter((g) => g.clients.length);
+  const total = data.clients.length;
+  const active = data.clients.filter((c) => c.contractStatus !== 'concluido' && c.contractStatus !== 'pausado').length;
+  const letters = new Set(groups.map((g) => g.letter));
+  const alphabet = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', '#'];
 
   return html`
     ${pageHeader({
-      title: 'Clientes',
-      subtitle: `${pluralize(clients.length, 'cliente', 'clientes')} · ${pluralize(active, 'com contrato ativo', 'com contrato ativo')}`,
+      title: 'Clientes de A a Z',
+      subtitle: `${pluralize(total, 'cliente', 'clientes')} · ${pluralize(active, 'ativo', 'ativos')}`,
       actions: button({ label: 'Novo cliente', action: 'client:new', variant: 'primary', icon: 'plus' }),
     })}
-    ${clients.length
-      ? html`<div class="client-grid">
-          ${clients.map((c) => {
-            const f = clientFinance(c, t);
-            const projects = projectsOfClient(data, c.id);
-            const pending = c.pendingItems.filter((p) => !p.done).length;
-            return html`
-              <a class="client-card" href="#/clientes/${c.id}">
-                <span class="client-card__head">
-                  <span>
-                    <span class="client-card__name">${c.company}</span>
-                    <span class="client-card__sub">${c.contactName}${c.segment ? ` · ${c.segment}` : ''}</span>
-                  </span>
-                  ${badge(labelOf(CONTRACT_STATUSES, c.contractStatus), toneOf(CONTRACT_STATUSES, c.contractStatus))}
-                </span>
-                <span class="client-card__facts">
-                  <span>${icon('projects', 14)} ${pluralize(projects.length, 'projeto', 'projetos')}</span>
-                  <span class="${cx(pending && 'text-warning')}">${icon('flag', 14)} ${pluralize(pending, 'pendência', 'pendências')}</span>
-                  ${demoTag(c)}
-                </span>
-                ${finance && f.total
-                  ? html`<span class="client-card__finance">
-                      <span class="client-card__finance-row"><span>Recebido</span><strong>${formatCurrency(f.paid)} <small>de ${formatCurrency(f.total)}</small></strong></span>
-                      ${progressBar((f.paid / f.total) * 100, 'Valor recebido')}
-                      ${f.overdueCount ? html`<span class="text-danger">${icon('alert', 13)} ${pluralize(f.overdueCount, 'parcela vencida', 'parcelas vencidas')}</span>` : ''}
-                    </span>`
-                  : ''}
-                ${finance && (c.subscriptions ?? []).some((s) => s.active)
-                  ? html`<span class="client-card__plan">${icon('repeat', 13)} ${(c.subscriptions ?? []).filter((s) => s.active).map((s) => `${s.name} · ${formatCurrency(s.amount, true)}/mês`).join(' + ')}</span>`
-                  : ''}
-                ${c.nextStep ? html`<span class="client-card__next">${icon('arrowRight', 13)} ${c.nextStep}</span>` : ''}
-              </a>`;
-          })}
-        </div>`
+    ${total
+      ? html`
+        <div class="toolbar">
+          <label class="visually-hidden" for="client-search">Buscar cliente</label>
+          <input class="input toolbar__search" id="client-search" type="search" placeholder="Buscar por nome, contato, ramo ou cidade" value="${listUi.search}" data-input="client:search" autocomplete="off" />
+        </div>
+        <nav class="az-letters" aria-label="Pular para a letra">
+          ${alphabet.map((l) => (letters.has(l) ? html`<a href="#/clientes" data-action="client:letter" data-letter="${l}">${l}</a>` : html`<span aria-hidden="true">${l}</span>`))}
+        </nav>
+        ${groups.length
+          ? groups.map(
+              (g) => html`<section class="az-group" id="letra-${g.letter === '#' ? 'outros' : g.letter}">
+                <h2 class="az-group__letter">${g.letter}</h2>
+                <ul class="az-list">
+                  ${g.clients.map((c) => {
+                    const f = clientFinance(c, t);
+                    const moment = clientMoment(c);
+                    const pending = c.pendingItems.filter((p) => !p.done).length;
+                    return html`<li>
+                      <a class="az-row" href="#/clientes/${c.id}">
+                        <span class="az-row__name">${c.company} ${demoTag(c)}<small>${[c.contactName, c.segment, c.city].filter(Boolean).join(' · ')}</small></span>
+                        <span class="az-row__facts">
+                          ${badge(moment.label, moment.tone)}
+                          ${pending ? html`<span class="text-warning small">${icon('flag', 13)} ${pluralize(pending, 'pendência', 'pendências')}</span>` : ''}
+                          ${finance && f.overdueCount ? html`<span class="text-danger small">${icon('alert', 13)} ${pluralize(f.overdueCount, 'parcela vencida', 'parcelas vencidas')}</span>` : ''}
+                        </span>
+                        ${badge(labelOf(CONTRACT_STATUSES, c.contractStatus), toneOf(CONTRACT_STATUSES, c.contractStatus))}
+                      </a>
+                    </li>`;
+                  })}
+                </ul>
+              </section>`,
+            )
+          : html`<div class="panel">${emptyState({ icon: 'search', compact: true, title: 'Nenhum cliente encontrado', text: 'Tente outra palavra.' })}</div>`}`
       : html`<div class="panel">${emptyState({
           icon: 'clients',
           title: 'Nenhum cliente cadastrado',
-          text: 'Cadastre clientes diretamente ou converta uma oportunidade ganha no Comercial.',
+          text: 'Cadastre clientes diretamente ou converta um lead que fechou na Prospecção.',
           action: button({ label: 'Novo cliente', action: 'client:new', variant: 'primary', icon: 'plus' }),
         })}</div>`}
   `;
 }
+
+registerActions({
+  'client:search': (el) => {
+    listUi.search = (el as HTMLInputElement).value;
+    rerender();
+  },
+  'client:letter': (el) => {
+    const letter = el.dataset.letter === '#' ? 'outros' : el.dataset.letter;
+    document.getElementById(`letra-${letter}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  },
+});
 
 function renderPayments(client: Client): SafeHtml {
   const t = today();
@@ -513,7 +534,7 @@ registerActions({
     const message = store().data.library.find((l) => l.id === el.dataset.message);
     if (!client) return;
     if (!message) {
-      toast('A mensagem foi removida da Biblioteca. Escreva uma nova em Biblioteca › Mensagens.', 'error');
+      toast('A mensagem foi removida. Escreva uma nova em Mensagens prontas.', 'error');
       return;
     }
     try {
@@ -529,9 +550,20 @@ registerActions({
   },
 });
 
-function renderDetail(client: Client): SafeHtml {
+function renderDetail(client: Client, tab: ClientTab = 'geral'): SafeHtml {
   const { data } = store();
   const t = today();
+  if (tab !== 'geral') {
+    return html`
+      ${pageHeader({
+        title: client.company,
+        back: { href: '#/clientes', label: 'Clientes' },
+        subtitle: html`${badge(labelOf(CONTRACT_STATUSES, client.contractStatus), toneOf(CONTRACT_STATUSES, client.contractStatus))} ${demoTag(client)} <span class="muted">${[client.segment, client.city].filter(Boolean).join(' · ')}</span>`,
+      })}
+      ${clientTabNav(client, tab)}
+      ${renderClientTab(client, tab)}
+    `;
+  }
   const projects = projectsOfClient(data, client.id);
   const tasks = tasksRelatedTo(data, { type: 'client', id: client.id });
   const opportunity = data.opportunities.find((o) => o.clientId === client.id);
@@ -544,6 +576,7 @@ function renderDetail(client: Client): SafeHtml {
       actions: button({ label: 'Editar', action: 'client:edit', icon: 'edit', data: { id: client.id } }),
     })}
 
+    ${clientTabNav(client, 'geral')}
     ${renderSummary(client)}
 
     <div class="detail-grid">
@@ -584,6 +617,9 @@ function renderDetail(client: Client): SafeHtml {
 
       <aside class="detail-grid__side">
         ${renderAfterSales(client)}
+        ${onboardingProgress(client).done < onboardingProgress(client).total
+          ? panel({ title: 'Onboarding', icon: 'flag', action: html`<a class="panel__link" href="#/clientes/${client.id}/onboarding">${onboardingProgress(client).done} de ${onboardingProgress(client).total} ${icon('arrowRight', 14)}</a>`, body: onboardingChecklist(client) })
+          : ''}
         ${panel({
           title: 'Próximo passo',
           body: html`<p class="lead-text">${client.nextStep || html`<span class="muted">Não definido</span>`}</p>`,
@@ -619,6 +655,12 @@ function renderDetail(client: Client): SafeHtml {
             ${opportunity ? html`<a class="panel__link" href="#/comercial/${opportunity.id}">Ver histórico comercial ${icon('arrowRight', 14)}</a>` : ''}
           `,
         })}
+        ${panel({
+          title: 'Origem e indicação',
+          icon: 'route',
+          action: button({ label: 'Editar origem', iconOnly: true, icon: 'edit', variant: 'ghost', size: 'sm', action: 'origin:edit', data: { client: client.id } }),
+          body: originSummary(client),
+        })}
         ${renderLinks(client)}
         ${client.notes ? panel({ title: 'Observações', body: html`<p>${multiline(client.notes)}</p>` }) : ''}
       </aside>
@@ -631,7 +673,8 @@ export const clientsView: View = {
   render: (route: Route) => {
     if (route.params[0]) {
       const client = findClient(store().data, route.params[0]);
-      if (client) return renderDetail(client);
+      const tab = (CLIENT_TABS.some((t) => t.id === route.params[1]) ? route.params[1] : 'geral') as ClientTab;
+      if (client) return renderDetail(client, tab);
       return html`${pageHeader({ title: 'Cliente não encontrado', back: { href: '#/clientes', label: 'Clientes' } })}
         <div class="panel">${emptyState({ icon: 'clients', title: 'Este cliente não existe ou foi removido.' })}</div>`;
     }
