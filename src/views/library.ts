@@ -172,7 +172,7 @@ function renderItems(category: LibraryCategory): SafeHtml {
 }
 
 export const libraryView: View = {
-  title: () => 'Biblioteca',
+  title: () => 'Mensagens prontas',
   render: (route: Route) => {
     const { data } = store();
     const tab: Tab = isTab(route.params[0]) ? route.params[0] : 'mensagem';
@@ -180,7 +180,7 @@ export const libraryView: View = {
 
     return html`
       ${pageHeader({
-        title: 'Biblioteca',
+        title: 'Mensagens prontas',
         subtitle: `${pluralize(data.library.length, 'material', 'materiais')} · ${pluralize(data.decisions.length, 'decisão registrada', 'decisões registradas')}`,
         actions:
           tab === 'decisoes'

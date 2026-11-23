@@ -1,9 +1,10 @@
-# Mawe OS
+# Mawe OS (Central MaweCreate)
 
-Escritório digital privado da **Mawe Create** — operação diária, comercial, clientes,
-projetos, tarefas, biblioteca e agentes de IA, compartilhado por Maria Eduarda e Wesley.
+Escritório digital privado da **Mawe Create**: operação diária, prospecção, clientes,
+projetos, tarefas, marketing e gestão, compartilhado por Maria Eduarda e Wesley. Nas telas o
+sistema se chama **Central** (o repositório continua `mawe-os`).
 
-> **Status: v0.7.** Funciona de verdade no navegador. Tem dois modos:
+> **Status: v0.8.** Funciona de verdade no navegador. Tem dois modos:
 > - **Protótipo local** (padrão): sem login, com dados **fictícios** salvos só neste navegador.
 > - **Com login (Supabase)**: cada sócio entra com sua conta e os dois veem os mesmos dados.
 >   Para ativar, siga [`docs/SUPABASE.md`](docs/SUPABASE.md).
@@ -40,6 +41,47 @@ O teste de navegação usa o Playwright. Se for a primeira vez na sua máquina, 
 `npx playwright install chromium`.
 
 ## O que já funciona
+
+### Novidades da v0.8 (Central MaweCreate)
+
+- **Visual**: "CENTRAL" embaixo da logo e o tema **Rosa bebê** (fundo rosa e menu claro). Cada
+  pessoa escolhe a sua cor em Cores do sistema.
+- **Menu novo**: botões **+ Novo lead** e **+ Adicionar** (tarefa, cliente, entrada, aprovação,
+  contrato, nota, ideia de post), **acesso rápido** (Início, Planejamento, Bloco de notas,
+  Tarefas, Chat) e as áreas em grupos que abrem e fecham: Comercial, Operações, Marketing,
+  Administrativo e Agência.
+- **Início (Central da agência)**: prioridades do dia (3, com botão para mais), **arcos** de
+  atalho (leads ativos, clientes ativos, projetos, contratos, faturamento do mês, processos),
+  **Pra fazer hoje** numa lista só e 4 números (entrou no mês, a receber, em cadência, fixo
+  mensal). O gráfico de faturamento foi para o Financeiro e o funil ficou na Prospecção.
+- **Prospecção com cadência**: Aquecimento (3 dias) → Pronto pra abordar → Aguardando resposta
+  (follow-ups em 3, 7 e 15 dias) → Negociação → Fechou; sem resposta volta em 3 meses. A tela
+  abre em **Quem chamar hoje**, com os botões Mandei, Respondeu, Sem resposta e Tentar de novo.
+  O funil mostra só 3 números; o resto está em Relatórios. Os leads antigos foram para a etapa
+  mais parecida (nenhum foi apagado; etapas sem par continuam no funil).
+- **Clientes de A a Z** com índice de letras e busca. A ficha ganhou abas: **Onboarding**
+  (checklist do começo), **Briefing** (perguntas editáveis, botão para copiar e mandar ao
+  cliente), **Arquivos** (logo, fotos, contrato; imagens e PDF), **Acessos** (onde está cada
+  acesso, nunca a senha), **Contratos** e **Depoimentos**. Origem e indicação de cada cliente.
+- **Contratos e vencimentos**: avisa no Pra fazer hoje 30 dias antes de vencer; botão Renovar.
+- **Planejamento da agência**: meta do mês (agora com posts), metas da semana de cada um e
+  quadro de ideias (Ideia, Fazendo, Feito).
+- **Bloco de notas** (cores, fixar, notas só suas, virar tarefa) e **Chat da equipe** (ligado a
+  cliente, projeto ou lead; com o chat aberto as mensagens chegam em ~5 segundos; não há
+  notificação no celular).
+- **Marketing**: seguidores do Instagram da Mawe mês a mês com gráfico e comparação ano a ano,
+  ideias de posts (Ideia, Gravando, Agendado, Postado), cases do portfólio e de onde vêm os
+  clientes (quem indicou quem).
+- **Administrativo**: atalhos de gestão, **divisão do dinheiro** (agência, impostos e cada
+  sócio) e **cópia dos dados** em planilha (.xlsx) ou completa (.json).
+- **Relatório do mês** em PDF, **Treinamento** (cada pessoa marca "li" e "já fiz sozinho" nos
+  processos), **Kit** (orçamento rápido com mensagem pronta e links do portfólio) e **horas por
+  projeto** (cronômetro ou registro manual, com quanto rendeu por hora).
+- Quando os dois salvam ao mesmo tempo, a ação de quem salvou por último é refeita sobre a
+  versão mais nova, sem perder nada.
+- A Central de agentes saiu do menu (continua em `#/agentes`).
+
+### Até a v0.7
 
 - **Painel (gestão)**: **gráfico de faturamento** por período (7 dias, 30 dias, este mês,
   12 meses) com comparação ao período anterior, ticket médio e valor de cada dia ao passar o

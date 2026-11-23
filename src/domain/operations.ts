@@ -6,7 +6,7 @@
  * (e não nas telas) facilita testar e, no futuro, mover a lógica para um
  * servidor/banco de dados.
  */
-import { addMonths, isValidISODate, lastDayOfMonth, monthKey, monthLabel, shiftMonth, todayISO, type ISODate } from '../core/dates.ts';
+import { addDays, addMonths, isValidISODate, lastDayOfMonth, monthKey, monthLabel, shiftMonth, todayISO, type ISODate } from '../core/dates.ts';
 import { createId } from '../core/id.ts';
 import { logActivity } from './activity.ts';
 import { guessFollowUpDays, guessStageKind } from './commercial.ts';
@@ -145,6 +145,8 @@ export function createOpportunity(draft: AppData, input: OpportunityInput, ctx: 
     closedAt: FINAL_STAGES.includes(input.stage) ? todayISO(ctx.now) : null,
     createdAt: ctx.now.toISOString(),
   };
+  // Aquecimento sem data: a abordagem fica para o 3º dia.
+  if (opportunity.stage === 'aquecimento' && !opportunity.followUpDate) opportunity.followUpDate = addDays(todayISO(ctx.now), 2);
   draft.opportunities.push(opportunity);
   logActivity(draft, ctx, `cadastrou a oportunidade ${opportunity.company}`, `#/comercial/${opportunity.id}`);
   return opportunity;
@@ -163,6 +165,9 @@ export function updateOpportunity(draft: AppData, id: ID, patch: Partial<Opportu
         ctx,
       ),
     );
+    if (patch.stage === 'aquecimento' && patch.followUpDate === undefined && (!opp.followUpDate || opp.followUpDate < todayISO(ctx.now))) {
+      opp.followUpDate = addDays(todayISO(ctx.now), 2);
+    }
     // Data de fechamento: entra ao ir para Ganho/Perdido e sai se o lead for reaberto.
     if (FINAL_STAGES.includes(patch.stage)) opp.closedAt = todayISO(ctx.now);
     else {

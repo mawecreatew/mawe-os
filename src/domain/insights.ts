@@ -4,6 +4,8 @@
  */
 import { addDays, type ISODate } from '../core/dates.ts';
 import { afterSalesDue } from './aftersales.ts';
+import { APPROACH_STAGE, WARMUP_STAGE } from './cadence.ts';
+import { contractState, contractsEndingSoon } from './clientcare.ts';
 import { followStatus } from './commercial.ts';
 import { upcomingBills } from './finance.ts';
 import { WON_STAGE, isOpenStage, openStages } from './labels.ts';
@@ -12,7 +14,7 @@ import type { AppData, ID, Opportunity } from './types.ts';
 
 // ---------------------------------------------------------------- Foco de hoje
 
-export type FocusKind = 'followup' | 'task' | 'bill' | 'delivery' | 'domain' | 'aftersales';
+export type FocusKind = 'followup' | 'task' | 'bill' | 'delivery' | 'domain' | 'aftersales' | 'contract';
 
 export interface FocusItem {
   key: string;
@@ -48,17 +50,61 @@ export function todayFocus(data: AppData, today: ISODate, options: { finance: bo
     const status = followStatus(data, o, today);
     if (!status.needsAction) continue;
     const title =
-      status.state === 'follow_up' ? `Fazer follow-up com ${o.company}` : status.state === 'lembrete' ? `Lembrete: ${o.company}` : `Retornar para ${o.company}`;
+      o.stage === WARMUP_STAGE
+        ? `Abordar ${o.company}`
+        : status.state === 'follow_up'
+          ? `Fazer follow-up com ${o.company}`
+          : status.state === 'sem_resposta'
+            ? `Decidir: ${o.company} não respondeu`
+            : status.state === 'lembrete'
+              ? `Lembrete: ${o.company}`
+              : `Retornar para ${o.company}`;
     items.push({
       key: `o:${o.id}`,
       kind: 'followup',
       title,
-      subtitle: status.state === 'follow_up' ? `${status.label}${o.nextAction ? ` · ${o.nextAction}` : ''}` : o.nextAction || 'Retorno comercial',
+      subtitle:
+        o.stage === WARMUP_STAGE
+          ? 'Aquecimento concluído: mandar a primeira mensagem'
+          : status.state === 'follow_up' || status.state === 'sem_resposta'
+            ? `${status.label}${o.nextAction ? ` · ${o.nextAction}` : ''}`
+            : o.nextAction || 'Retorno comercial',
       date: o.followUpDate && o.followUpDate <= today ? o.followUpDate : today,
       // Só fica "atrasado" o que depende de vocês e já passou da data.
       overdue: status.state === 'pendente',
       href: `#/comercial/${o.id}`,
       ownerIds: o.ownerIds,
+    });
+  }
+
+  // Leads prontos para a primeira mensagem: uma linha só, que leva ao Comercial.
+  const ready = data.opportunities.filter((o) => o.stage === APPROACH_STAGE && (!o.followUpDate || o.followUpDate <= today));
+  if (ready.length) {
+    items.push({
+      key: 'o:primeira',
+      kind: 'followup',
+      title: ready.length === 1 ? `Mandar a primeira mensagem para ${ready[0].company}` : `Mandar a primeira mensagem para ${ready.length} leads`,
+      subtitle: 'Pronto pra abordar · abra Quem chamar hoje',
+      date: today,
+      overdue: false,
+      href: '#/comercial',
+      ownerIds: [...new Set(ready.flatMap((o) => o.ownerIds))],
+    });
+  }
+
+  // Contratos que vencem nos próximos 30 dias (ou já venceram).
+  for (const c of contractsEndingSoon(data, today)) {
+    const client = data.clients.find((x) => x.id === c.clientId);
+    const late = contractState(c, today) === 'vencido';
+    items.push({
+      key: `c:${c.id}`,
+      kind: 'contract',
+      title: `${late ? 'Venceu' : 'Vence'}: ${c.title}${client ? ` (${client.company})` : ''}`,
+      subtitle: late ? 'Renovar ou encerrar o contrato' : 'Combinar a renovação com o cliente',
+      date: c.endDate!,
+      overdue: late,
+      href: '#/contratos',
+      ownerIds: [],
     });
   }
 
@@ -141,7 +187,7 @@ export function todayFocus(data: AppData, today: ISODate, options: { finance: bo
     });
   }
 
-  const weight: Record<FocusKind, number> = { followup: 0, bill: 1, delivery: 2, task: 3, aftersales: 4, domain: 5 };
+  const weight: Record<FocusKind, number> = { followup: 0, bill: 1, delivery: 2, task: 3, aftersales: 4, contract: 5, domain: 6 };
   return items.sort((a, b) => a.date.localeCompare(b.date) || weight[a.kind] - weight[b.kind] || a.title.localeCompare(b.title));
 }
 
@@ -189,7 +235,7 @@ export function salesFunnel(data: AppData): SalesFunnel {
     const isWon = o.stage === WON_STAGE || Boolean(o.clientId);
     const hasPrice = isWon || priced.has(o.id) || reached(o, 'negociacao');
     const hasReply = hasPrice || Boolean(o.repliedAt);
-    const wasContacted = hasReply || Boolean(o.contactedAt) || reached(o, 'contato_realizado');
+    const wasContacted = hasReply || Boolean(o.contactedAt) || reached(o, 'aguardando');
     if (wasContacted) contacted++;
     if (hasReply) replied++;
     if (hasPrice) proposal++;

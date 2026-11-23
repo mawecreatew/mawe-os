@@ -5,6 +5,7 @@
  * o resultado é sempre o mesmo (importante para a sincronização entre sócios).
  */
 import { fillCategories } from './categories.ts';
+import { migrateToCadence } from './cadence.ts';
 import { fillStageKinds, stageKind } from './commercial.ts';
 import { DEFAULT_PIPELINE_STAGES, FINAL_STAGES, LOST_STAGE, WON_STAGE } from './labels.ts';
 import { starterProcesses } from './processes.ts';
@@ -31,6 +32,7 @@ export function fillDefaults(data: AppData): AppData {
     if (o.repliedAt === undefined) o.repliedAt = null;
     if (!Array.isArray(o.contactLog)) o.contactLog = [];
     if (o.lostReason === undefined) o.lostReason = null;
+    if (o.cadenceFrom === undefined) o.cadenceFrom = null;
     if (o.closedAt === undefined) {
       // Dados antigos: usa o último registro do histórico como dia do fechamento.
       const last = o.history[o.history.length - 1]?.at ?? o.createdAt;
@@ -42,6 +44,13 @@ export function fillDefaults(data: AppData): AppData {
     if (!Array.isArray(c.links)) c.links = [];
     if (c.domain === undefined) c.domain = null;
     if (!c.afterSales || typeof c.afterSales !== 'object') c.afterSales = {};
+    if (!c.onboarding || typeof c.onboarding !== 'object') c.onboarding = {};
+    if (c.briefing === undefined) c.briefing = null;
+    if (!Array.isArray(c.files)) c.files = [];
+    if (!Array.isArray(c.accesses)) c.accesses = [];
+    if (c.source === undefined) c.source = null;
+    if (c.referredBy === undefined) c.referredBy = null;
+    if (typeof c.referredByName !== 'string') c.referredByName = '';
   }
   for (const p of d.projects) {
     if (!p.type) p.type = 'site';
@@ -50,6 +59,7 @@ export function fillDefaults(data: AppData): AppData {
     if (p.seriesId === undefined) p.seriesId = null;
     if (p.serviceId === undefined) p.serviceId = null;
     if (p.publishedAt === undefined) p.publishedAt = null;
+    if (!Array.isArray(p.timeLogs)) p.timeLogs = [];
   }
   if (!d.finance || typeof d.finance !== 'object') d.finance = { entries: [], recurring: [] };
   if (!Array.isArray(d.finance.entries)) d.finance.entries = [];
@@ -66,6 +76,14 @@ export function fillDefaults(data: AppData): AppData {
   if (!Array.isArray(d.processes)) d.processes = starterProcesses(d.users.some((u) => u.id === 'maria') ? 'maria' : (d.users[0]?.id ?? 'maria'));
   if (!Array.isArray(d.approvals)) d.approvals = [];
   if (!d.daily || typeof d.daily !== 'object') d.daily = {};
+  for (const key of ['contracts', 'notes', 'chat', 'ideas', 'weekGoals', 'postIdeas', 'instagramStats', 'cases', 'portfolioLinks'] as const) {
+    if (!Array.isArray(d[key])) (d as unknown as Record<string, unknown[]>)[key] = [];
+  }
+  if (!d.chatRead || typeof d.chatRead !== 'object') d.chatRead = {};
+  if (d.moneySplit === undefined) d.moneySplit = null;
+  if (!d.training || typeof d.training !== 'object') d.training = {};
+  if (!d.timers || typeof d.timers !== 'object') d.timers = {};
+  if (!Array.isArray(d.briefingQuestions)) d.briefingQuestions = [];
   if (!d.goals || typeof d.goals !== 'object') d.goals = {};
   for (const s of d.services) if (!Array.isArray(s.packageItems)) s.packageItems = [];
   fillCategories(d);
@@ -82,6 +100,15 @@ export function fillDefaults(data: AppData): AppData {
  * determinístico: os dois sócios chegam exatamente ao mesmo resultado.
  */
 const MIGRATIONS: Array<{ id: string; run: (d: AppData) => void }> = [
+  {
+    // Central MaweCreate: o funil passa a seguir a cadência (aquecimento, abordagem,
+    // follow-ups em 3, 7 e 15 dias, negociação). Leads vão para a etapa mais parecida.
+    id: '2026-11-cadencia',
+    run: (d) => {
+      migrateToCadence(d);
+      fillStageKinds(d.pipelineStages);
+    },
+  },
   {
     // Lembretes antigos em etapas que esperam o cliente (ou pausadas) não são atraso:
     // eram datas de "próxima ação" que já passaram. Saem para não acusar atraso falso.

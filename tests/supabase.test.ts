@@ -108,18 +108,30 @@ describe('dados compartilhados', () => {
     assert.equal(store.currentUser.id, 'wesley');
   });
 
-  it('gravações simultâneas: a segunda é recusada e os dados são recarregados', async () => {
+  it('gravações simultâneas: a segunda é refeita sobre a versão nova e nenhuma se perde', async () => {
     const maria = await Store.open({ source: new SupabaseDataSource(await loggedClient(...MARIA)), clock, initialDataset: 'empty', lockedUserId: 'maria' });
     const wesley = await Store.open({ source: new SupabaseDataSource(await loggedClient(...WESLEY)), clock, initialDataset: 'empty', lockedUserId: 'wesley' });
     const input = (title: string) => ({ title, description: '', assigneeIds: ['maria'], priority: 'media' as const, status: 'a_fazer' as const, dueDate: null, related: null });
     await maria.apply((d, ctx) => createTask(d, input('Primeira gravação'), ctx));
-    await assert.rejects(() => wesley.apply((d, ctx) => createTask(d, input('Gravação atrasada'), ctx)), ConflictError);
-    // Wesley agora vê o que a Maria salvou e pode refazer a ação
-    assert.ok(wesley.data.tasks.some((t) => t.title === 'Primeira gravação'));
-    assert.ok(!wesley.data.tasks.some((t) => t.title === 'Gravação atrasada'));
+    // O Wesley ainda estava com a versão antiga: o sistema recarrega e refaz a ação dele.
     await wesley.apply((d, ctx) => createTask(d, input('Gravação atrasada'), ctx));
+    assert.ok(wesley.data.tasks.some((t) => t.title === 'Primeira gravação'));
+    assert.ok(wesley.data.tasks.some((t) => t.title === 'Gravação atrasada'));
     assert.equal(await maria.sync(), true);
+    assert.ok(maria.data.tasks.some((t) => t.title === 'Primeira gravação'));
     assert.ok(maria.data.tasks.some((t) => t.title === 'Gravação atrasada'));
+  });
+
+  it('se a ação refeita também falhar, avisa com o erro de conflito', async () => {
+    const source = new SupabaseDataSource(await loggedClient(...MARIA));
+    const store = await Store.open({ source, clock, initialDataset: 'empty', lockedUserId: 'maria' });
+    const original = source.save.bind(source);
+    source.save = async () => {
+      throw new ConflictError();
+    };
+    await assert.rejects(() => store.apply((d, ctx) => createTask(d, { title: 'X', description: '', assigneeIds: ['maria'], priority: 'media', status: 'a_fazer', dueDate: null, related: null }, ctx)), ConflictError);
+    source.save = original;
+    assert.ok(!store.data.tasks.some((t) => t.title === 'X'));
   });
 });
 

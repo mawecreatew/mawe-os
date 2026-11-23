@@ -12,8 +12,8 @@
   width: var(--sidebar-width);
   display: flex;
   flex-direction: column;
-  background: var(--brown-900);
-  color: var(--text-on-dark);
+  background: var(--menu-bg);
+  color: var(--menu-text);
   padding: var(--space-6) var(--space-4) var(--space-4);
   overflow-y: auto;
   z-index: 30;
@@ -25,7 +25,7 @@
   justify-content: space-between;
   padding: 0 var(--space-3) var(--space-6);
   margin-bottom: var(--space-4);
-  border-bottom: 1px solid rgb(243 235 223 / 0.08);
+  border-bottom: 1px solid var(--menu-line);
 }
 
 .brand {
@@ -49,19 +49,20 @@
   font-size: 1.375rem;
   line-height: 1.1;
   letter-spacing: 0.01em;
-  color: var(--text-on-dark);
+  color: var(--menu-text);
 }
 
 .brand__product {
-  font-size: var(--text-xs);
-  letter-spacing: 0.16em;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.34em;
   text-transform: uppercase;
-  color: var(--gold-300);
+  color: var(--menu-accent);
 }
 
 .sidebar .sidebar__close {
   display: none;
-  color: var(--text-on-dark-2);
+  color: var(--menu-text-2);
 }
 
 .nav {
@@ -77,20 +78,20 @@
   gap: var(--space-3);
   padding: 7px var(--space-3);
   border-radius: var(--radius-sm);
-  color: var(--text-on-dark-2);
+  color: var(--menu-text-2);
   text-decoration: none;
   font-size: var(--text-base);
   transition: background 0.15s var(--ease), color 0.15s var(--ease);
 }
 
 .nav__item:hover {
-  background: rgb(243 235 223 / 0.06);
-  color: var(--text-on-dark);
+  background: var(--menu-hover);
+  color: var(--menu-text);
 }
 
 .nav__item.is-active {
-  background: rgb(243 235 223 / 0.09);
-  color: var(--cream-0);
+  background: var(--menu-active);
+  color: var(--menu-active-text);
 }
 
 .nav__item.is-active::before {
@@ -101,7 +102,7 @@
   bottom: 8px;
   width: 2px;
   border-radius: 2px;
-  background: var(--gold-500);
+  background: var(--menu-accent);
 }
 
 .nav__item .icon { flex: none; opacity: 0.9; }
@@ -116,8 +117,8 @@
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text-on-dark-2);
-  opacity: 0.7;
+  color: var(--menu-text-2);
+  opacity: 0.75;
 }
 
 .nav__count {
@@ -128,8 +129,8 @@
   font-weight: 600;
   line-height: 20px;
   text-align: center;
-  background: rgb(243 235 223 / 0.12);
-  color: var(--text-on-dark);
+  background: var(--menu-count);
+  color: var(--menu-text);
 }
 
 .nav__count--alert {
@@ -147,7 +148,7 @@
 
 .profile {
   padding: var(--space-4) var(--space-3) var(--space-2);
-  border-top: 1px solid rgb(243 235 223 / 0.08);
+  border-top: 1px solid var(--menu-line);
 }
 
 .profile__label {
@@ -155,7 +156,7 @@
   font-size: var(--text-xs);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text-on-dark-2);
+  color: var(--menu-text-2);
   margin-bottom: var(--space-2);
 }
 
@@ -177,7 +178,7 @@
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-on-dark-2);
+  color: var(--menu-text-2);
   font-size: var(--text-sm);
   white-space: nowrap;
 }
@@ -199,7 +200,7 @@
   margin-top: var(--space-3);
   font-size: 11.5px;
   line-height: 1.45;
-  color: var(--text-on-dark-2);
+  color: var(--menu-text-2);
 }
 
 .profile__note .icon { flex: none; margin-top: 2px; }
@@ -285,12 +286,12 @@
     align-items: center;
     gap: var(--space-2);
     padding: var(--space-2) var(--space-3);
-    background: var(--brown-900);
-    color: var(--text-on-dark);
+    background: var(--menu-bg);
+    color: var(--menu-text);
   }
 
-  .topbar .btn--ghost { color: var(--text-on-dark); }
-  .topbar .btn--ghost:hover { background: rgb(243 235 223 / 0.08); }
+  .topbar .btn--ghost { color: var(--menu-text); }
+  .topbar .btn--ghost:hover { background: var(--menu-hover); }
 
   .topbar__title {
     font-family: var(--font-display);
@@ -375,10 +376,10 @@
 
 .profile__account { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
 .profile__who { display: flex; flex-direction: column; min-width: 0; }
-.profile__who strong { color: var(--cream-0); font-weight: 500; font-size: var(--text-sm); }
-.profile__who small { color: var(--text-on-dark-2); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sidebar .profile__logout { margin-top: var(--space-3); color: var(--text-on-dark-2); padding-left: 6px; }
-.sidebar .profile__logout:hover { background: rgb(243 235 223 / 0.08); color: var(--cream-0); }
+.profile__who strong { color: var(--menu-active-text); font-weight: 500; font-size: var(--text-sm); }
+.profile__who small { color: var(--menu-text-2); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar .profile__logout { margin-top: var(--space-3); color: var(--menu-text-2); padding-left: 6px; }
+.sidebar .profile__logout:hover { background: var(--menu-hover); color: var(--menu-text); }
 .env-banner--connected .env-banner__dot { background: #6f9a6a; }
 
 /* Em temas com outra cor de menu, a logo (PNG com fundo marrom) ganha uma moldura arredondada. */
@@ -389,3 +390,20 @@
 }
 
 :root[data-tema] .brand__product { margin-top: 6px; }
+
+/* ------------------------------------------------------------ Menu da Central */
+
+.sidebar__actions { display: grid; gap: 8px; margin: 0 0 var(--space-3); }
+.btn--block { width: 100%; justify-content: center; }
+.sidebar .btn--primary { background: var(--menu-accent); color: var(--menu-accent-text); }
+.sidebar .btn--primary:hover { filter: brightness(1.06); background: var(--menu-accent); color: var(--menu-accent-text); }
+.sidebar .btn--outline-menu { background: transparent; border: 1px solid var(--menu-button-line); color: var(--menu-text); }
+.sidebar .btn--outline-menu:hover { background: var(--menu-hover); color: var(--menu-text); }
+
+.nav-group__toggle { width: 100%; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.nav-group__chevron { display: inline-flex; transition: transform 0.15s var(--ease); opacity: 0.7; }
+.nav-group.is-open .nav-group__chevron { transform: rotate(90deg); }
+.nav-group.has-active > .nav-group__toggle { color: var(--menu-text); }
+.nav-group__items { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 6px 21px; padding-left: 8px; border-left: 1px solid var(--menu-line); }
+.nav__item--sub { padding: 6px 10px; font-size: var(--text-sm); }
+.nav__item--sub.is-active::before { left: -10px; }

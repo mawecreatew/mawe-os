@@ -54,6 +54,13 @@ export interface PipelineStage {
    * um follow-up. `0` = nunca sugere.
    */
   followUpDays?: number;
+  /**
+   * Cadência de follow-up: dias depois do primeiro contato sem resposta em que
+   * cada follow-up vence (ex.: [3, 7, 15]). Quando existe, vale no lugar de `followUpDays`.
+   */
+  cadence?: number[];
+  /** O que fazer nesta etapa (aparece no funil). */
+  hint?: string;
 }
 
 export type ContactChannel = 'whatsapp' | 'audio' | 'ligacao' | 'visita' | 'instagram' | 'email' | 'outro';
@@ -110,6 +117,8 @@ export interface Opportunity {
   lostReason?: string | null;
   /** Dia em que entrou em Ganho ou Perdido. */
   closedAt?: ISODate | null;
+  /** Recomeço da cadência ("Tentar de novo"): tentativas antes deste dia não contam. */
+  cadenceFrom?: ISODate | null;
   createdAt: Timestamp;
   isDemo?: boolean;
 }
@@ -174,6 +183,72 @@ export interface Client {
   domain?: { name: string; renewsOn: ISODate | null } | null;
   /** Contatos de pós-venda já feitos (chave do marco → dia em que foi feito). */
   afterSales?: Record<string, ISODate>;
+  /** Onboarding: passo do começo do projeto → dia em que foi feito. */
+  onboarding?: Record<string, ISODate>;
+  /** Respostas do briefing (id da pergunta → resposta). */
+  briefing?: { answers: Record<string, string>; updatedAt: Timestamp | null } | null;
+  /** Arquivos do cliente (logo, fotos, contrato assinado...). */
+  files?: StoredFile[];
+  /** Onde estão os acessos do cliente. Nunca guarda senhas. */
+  accesses?: ClientAccess[];
+  /** De onde o cliente veio (Google Maps, Instagram, Indicação...). */
+  source?: string | null;
+  /** Cliente que indicou este (quando veio por indicação). */
+  referredBy?: ID | null;
+  /** Quem indicou, quando não é cliente cadastrado. */
+  referredByName?: string;
+  createdAt: Timestamp;
+  isDemo?: boolean;
+}
+
+/** Arquivo guardado no Supabase Storage (ou, no protótipo, junto com os dados). */
+export interface StoredFile {
+  id: ID;
+  name: string;
+  type: string;
+  size: number;
+  /** Caminho no bucket `provas`. Vazio no protótipo local. */
+  path: string;
+  dataUrl?: string;
+  category: string;
+  uploadedAt: Timestamp;
+  authorId: ID;
+}
+
+/** Onde está o acesso de uma conta do cliente. A senha fica no gerenciador de senhas. */
+export interface ClientAccess {
+  id: ID;
+  /** Domínio, Hospedagem, Instagram, E-mail... */
+  service: string;
+  /** E-mail ou usuário de login (opcional). */
+  login: string;
+  /** Onde a senha está guardada (ex.: "Bitwarden, pasta Clientes"). */
+  whereSaved: string;
+  /** Quem tem acesso (ex.: "Cliente e Maria"). */
+  whoHasAccess: string;
+  url: string;
+  notes: string;
+}
+
+// ---------------------------------------------------------------- Contratos
+
+export type ContractKind = 'site' | 'manutencao' | 'dominio' | 'hospedagem' | 'outro';
+
+/** Contrato ou serviço com vencimento (site, manutenção, domínio...). */
+export interface ContractRecord {
+  id: ID;
+  clientId: ID;
+  title: string;
+  kind: ContractKind;
+  startDate: ISODate;
+  /** `null` = sem data de fim. */
+  endDate: ISODate | null;
+  amount: number | null;
+  recurrence: 'unico' | 'mensal' | 'anual';
+  signed: boolean;
+  /** Link do contrato assinado (Drive) ou do arquivo. */
+  link: string;
+  notes: string;
   createdAt: Timestamp;
   isDemo?: boolean;
 }
@@ -240,8 +315,18 @@ export interface Project {
   serviceId?: ID | null;
   /** Dia em que o projeto foi marcado como publicado/entregue (base do pós-venda). */
   publishedAt?: ISODate | null;
+  /** Horas trabalhadas no projeto. */
+  timeLogs?: TimeLog[];
   createdAt: Timestamp;
   isDemo?: boolean;
+}
+
+export interface TimeLog {
+  id: ID;
+  userId: ID;
+  date: ISODate;
+  minutes: number;
+  note: string;
 }
 
 // ---------------------------------------------------------------- Financeiro
@@ -437,6 +522,8 @@ export interface MonthlyGoals {
   proposalsAccepted: number | null;
   /** Meta diária de contatos de prospecção (por dia útil). */
   dailyContacts?: number | null;
+  /** Posts no Instagram da Mawe no mês. */
+  posts?: number | null;
 }
 
 // ---------------------------------------------------------------- Categorias
@@ -611,6 +698,111 @@ export interface DailyNote {
   alignment: { happened: string; blocked: string; tomorrow: string; doneAt: Timestamp | null };
 }
 
+// ---------------------------------------------------------------- Central da equipe
+
+export type NoteColor = 'creme' | 'rosa' | 'verde' | 'azul' | 'amarelo';
+
+export interface Note {
+  id: ID;
+  title: string;
+  text: string;
+  color: NoteColor;
+  pinned: boolean;
+  /** Só aparece para quem escreveu (continua guardada junto com os dados da agência). */
+  private: boolean;
+  authorId: ID;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface ChatMessage {
+  id: ID;
+  authorId: ID;
+  text: string;
+  at: Timestamp;
+  related: RelatedRef | null;
+}
+
+export type IdeaStatus = 'ideia' | 'fazendo' | 'feito';
+
+/** Ideia ou projeto interno da própria agência (quadro do Planejamento). */
+export interface AgencyIdea {
+  id: ID;
+  title: string;
+  notes: string;
+  status: IdeaStatus;
+  ownerIds: ID[];
+  authorId: ID;
+  createdAt: Timestamp;
+}
+
+export interface WeekGoal {
+  id: ID;
+  /** Segunda-feira da semana. */
+  weekStart: ISODate;
+  text: string;
+  done: boolean;
+  ownerId: ID | null;
+}
+
+export type PostStatus = 'ideia' | 'gravando' | 'agendado' | 'postado';
+
+/** Ideia de post para o Instagram da Mawe. */
+export interface PostIdea {
+  id: ID;
+  title: string;
+  format: string;
+  notes: string;
+  status: PostStatus;
+  date: ISODate | null;
+  authorId: ID;
+  createdAt: Timestamp;
+}
+
+/** Números do Instagram da Mawe num mês (anotados à mão). */
+export interface InstagramStat {
+  /** AAAA-MM */
+  month: string;
+  followers: number;
+  reach: number | null;
+  messages: number | null;
+}
+
+/** Case de portfólio: antes e depois de um trabalho entregue. */
+export interface PortfolioCase {
+  id: ID;
+  title: string;
+  clientId: ID | null;
+  projectId: ID | null;
+  before: string;
+  after: string;
+  result: string;
+  link: string;
+  status: 'rascunho' | 'pronto' | 'postado';
+  createdAt: Timestamp;
+  isDemo?: boolean;
+}
+
+/** Link do portfólio (demo ou site pronto) para mandar na prospecção. */
+export interface PortfolioLink {
+  id: ID;
+  title: string;
+  url: string;
+  kind: 'demo' | 'cliente' | 'agencia';
+  /** Nicho (barbearia, hamburgueria...). */
+  niche: string;
+}
+
+/** Como o dinheiro que entra é dividido (porcentagens). */
+export interface MoneySplit {
+  agency: number;
+  taxes: number;
+  partners: Record<ID, number>;
+}
+
+/** Progresso de cada pessoa nos processos (treinamento). */
+export type TrainingProgress = Record<ID, Record<ID, { readAt: Timestamp | null; soloAt: Timestamp | null }>>;
+
 // ---------------------------------------------------------------- Agentes
 
 export type AgentId = 'coordenador' | 'comercial' | 'organizacao' | 'tecnico';
@@ -663,6 +855,23 @@ export interface AppData {
   agency?: AgencyProfile;
   /** Prioridades e alinhamento de cada dia (chave AAAA-MM-DD). Guarda só os últimos 60 dias. */
   daily?: Record<string, DailyNote>;
+  contracts?: ContractRecord[];
+  notes?: Note[];
+  chat?: ChatMessage[];
+  /** Até quando cada pessoa leu o chat. */
+  chatRead?: Record<ID, Timestamp>;
+  ideas?: AgencyIdea[];
+  weekGoals?: WeekGoal[];
+  postIdeas?: PostIdea[];
+  instagramStats?: InstagramStat[];
+  cases?: PortfolioCase[];
+  portfolioLinks?: PortfolioLink[];
+  moneySplit?: MoneySplit | null;
+  training?: TrainingProgress;
+  /** Cronômetro de horas ligado (pessoa → projeto e início). */
+  timers?: Record<ID, { projectId: ID; startedAt: Timestamp }>;
+  /** Perguntas do briefing (editáveis). */
+  briefingQuestions?: Array<{ id: ID; text: string }>;
   meta: {
     /** `demo` = dados fictícios carregados; `empty` = base limpa para uso real local. */
     dataset: 'demo' | 'empty';

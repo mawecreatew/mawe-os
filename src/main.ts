@@ -35,6 +35,17 @@ import { approvalsView } from './views/approvals.ts';
 import { processesView } from './views/processes.ts';
 import { installProofLoader, setProofLookup } from './app/proofs.ts';
 import { applySavedTheme } from './app/theme.ts';
+import { findClientFile } from './domain/clientcare.ts';
+import { adminView } from './views/admin.ts';
+import { chatView } from './views/chat.ts';
+import { contractsView } from './views/contracts.ts';
+import { kitView } from './views/kit.ts';
+import { marketingView } from './views/marketing.ts';
+import { notesView } from './views/notes.ts';
+import { onboardingView } from './views/onboarding.ts';
+import { planningView } from './views/planning.ts';
+import { reportView } from './views/report.ts';
+import { trainingView } from './views/training.ts';
 
 const ROUTES: Record<string, View> = {
   painel: dashboardView,
@@ -53,6 +64,16 @@ const ROUTES: Record<string, View> = {
   equipe: teamView,
   processos: processesView,
   aprovacoes: approvalsView,
+  planejamento: planningView,
+  notas: notesView,
+  chat: chatView,
+  onboarding: onboardingView,
+  contratos: contractsView,
+  marketing: marketingView,
+  administrativo: adminView,
+  relatorio: reportView,
+  treinamento: trainingView,
+  kit: kitView,
 };
 
 const notFoundView: View = {
@@ -91,11 +112,11 @@ function render(): void {
   const scrolls = new Map<string, number>();
   document.querySelectorAll<HTMLElement>('[data-preserve-scroll]').forEach((node) => scrolls.set(node.dataset.preserveScroll!, node.scrollLeft));
 
-  el('sidebar').innerHTML = renderSidebar(route.section).value;
+  el('sidebar').innerHTML = renderSidebar(route).value;
   el('banner').innerHTML = renderPrototypeBanner().value;
   try {
     el('view').innerHTML = view.render(route).value;
-    document.title = `${view.title(route)} · Mawe OS`;
+    document.title = `${view.title(route)} · Central MaweCreate`;
   } catch (error) {
     console.error(error);
     el('view').innerHTML = html`<div class="panel">${emptyState({ icon: 'alert', title: 'Não foi possível exibir esta tela.', text: error instanceof Error ? error.message : String(error) })}</div>`.value;
@@ -120,19 +141,28 @@ function render(): void {
   }
 }
 
-/** Intervalo para buscar alterações feitas pelo outro sócio. */
+/** Intervalo para buscar alterações feitas pelo outro sócio (no chat é mais rápido). */
 const SYNC_INTERVAL_MS = 20_000;
+const CHAT_SYNC_INTERVAL_MS = 5_000;
 
 function startSync(store: Store): void {
-  const sync = () => {
-    const busy = document.querySelector('dialog[open]') || (document.activeElement as HTMLElement | null)?.matches('input, textarea, select');
+  let last = 0;
+  const sync = (force = false) => {
+    const onChat = currentRoute().section === 'chat';
+    const now = Date.now();
+    if (!force && now - last < (onChat ? CHAT_SYNC_INTERVAL_MS : SYNC_INTERVAL_MS) - 500) return;
+    // No chat, digitar no campo de mensagem não impede de receber as novas.
+    const active = document.activeElement as HTMLElement | null;
+    const typing = active?.matches('input, textarea, select') && !(onChat && active.id === 'chat-text');
+    const busy = document.querySelector('dialog[open]') || typing;
     if (document.visibilityState !== 'visible' || busy) return;
+    last = now;
     store.sync().catch((error) => {
       if (error instanceof AuthRequiredError) window.location.reload();
     });
   };
-  setInterval(sync, SYNC_INTERVAL_MS);
-  window.addEventListener('focus', sync);
+  setInterval(() => sync(), CHAT_SYNC_INTERVAL_MS);
+  window.addEventListener('focus', () => sync(true));
 }
 
 /**
@@ -205,7 +235,7 @@ async function start(): Promise<void> {
     return;
   }
   setStore(store);
-  setProofLookup((approvalId) => (store.data.approvals ?? []).find((a) => a.id === approvalId)?.proof ?? undefined);
+  setProofLookup((id) => (store.data.approvals ?? []).find((a) => a.id === id)?.proof ?? findClientFile(store.data, id) ?? undefined);
   installProofLoader();
   if (access.lockedUserId) startSync(store);
 

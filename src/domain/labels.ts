@@ -29,17 +29,18 @@ export const WON_STAGE = 'ganho';
 export const LOST_STAGE = 'perdido';
 export const FINAL_STAGES: readonly OpportunityStage[] = [WON_STAGE, LOST_STAGE];
 
-/** Etapas padrão do funil (usadas na primeira vez; depois os sócios podem editar). */
+/**
+ * Etapas padrão do funil: a cadência de prospecção da MaweCreate (usadas na
+ * primeira vez; depois os sócios podem editar).
+ */
 export const DEFAULT_PIPELINE_STAGES: PipelineStage[] = [
-  { id: 'identificada', label: 'Oportunidade identificada', tone: 'neutral' },
-  { id: 'em_analise', label: 'Em análise', tone: 'neutral' },
-  { id: 'qualificada', label: 'Qualificada', tone: 'info' },
-  { id: 'abordagem_preparada', label: 'Abordagem preparada', tone: 'info' },
-  { id: 'contato_realizado', label: 'Contato realizado', tone: 'progress' },
-  { id: 'aguardando_resposta', label: 'Aguardando resposta', tone: 'warning' },
-  { id: 'negociacao', label: 'Negociação', tone: 'accent' },
-  { id: WON_STAGE, label: 'Ganho', tone: 'success' },
-  { id: LOST_STAGE, label: 'Perdido', tone: 'danger' },
+  { id: 'aquecimento', label: 'Aquecimento', tone: 'info', kind: 'nossa_vez', hint: 'Seguir, curtir e comentar por 3 dias' },
+  { id: 'abordar', label: 'Pronto pra abordar', tone: 'accent', kind: 'nossa_vez', hint: 'Mandar a primeira mensagem' },
+  { id: 'aguardando', label: 'Aguardando resposta', tone: 'progress', kind: 'vez_cliente', followUpDays: 3, cadence: [3, 7, 15], hint: 'Follow-ups em 3, 7 e 15 dias' },
+  { id: 'negociacao', label: 'Negociação', tone: 'warning', kind: 'vez_cliente', followUpDays: 3, hint: 'Respondeu: briefing e proposta' },
+  { id: 'sem_resposta', label: 'Sem resposta', tone: 'neutral', kind: 'pausado', hint: 'Tentar de novo em 3 meses' },
+  { id: WON_STAGE, label: 'Fechou', tone: 'success' },
+  { id: LOST_STAGE, label: 'Não rolou', tone: 'danger' },
 ];
 
 /** Tons que podem ser escolhidos para uma etapa do funil. */

@@ -37,6 +37,7 @@ import { teamMembers } from '../domain/people.ts';
 import type { AppData, FinanceEntry, Payer, RecurringExpense } from '../domain/types.ts';
 import { allowed, requirePermission, rerender, store, today } from '../app/context.ts';
 import type { View } from '../app/view.ts';
+import { renderFinanceHero } from './revenue.ts';
 import { badge, button, demoTag, emptyState, notice, pageHeader, panel, segmented, statCard } from '../ui/components.ts';
 import { formActions, selectField, textareaField, textField } from '../ui/forms.ts';
 import { icon } from '../ui/icons.ts';
@@ -663,6 +664,8 @@ export const financeView: View = {
               ${button({ label: 'Nova despesa', action: 'finance:new-out', variant: 'primary', icon: 'plus' })}`
           : undefined,
       })}
+      ${renderFinanceHero()}
+      <p class="muted small">${icon('piggy', 13)} Quanto fica para a agência e para cada sócio: <a href="#/administrativo">Administrativo › Divisão do dinheiro</a>.</p>
       <div class="toolbar">
         ${segmented({
           label: 'Seção do financeiro',

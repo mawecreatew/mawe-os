@@ -89,7 +89,7 @@ export class Store {
    */
   async apply<R>(operation: Operation<R>): Promise<R> {
     const draft = structuredClone(this.state);
-    const result = operation(draft, { userId: this.userId, now: this.clock() });
+    let result = operation(draft, { userId: this.userId, now: this.clock() });
     const previous = this.state;
     this.state = draft;
     this.notify();
@@ -99,6 +99,20 @@ export class Store {
       // Não salvou: volta ao que está gravado de fato (ou ao estado anterior).
       const saved = await this.source.load().catch(() => null);
       this.state = saved ? normalizeData(saved) : previous;
+      // O outro sócio salvou no mesmo instante: refaz a mesma ação sobre a versão
+      // mais nova (uma vez só). Assim nenhum dos dois perde o que fez.
+      if (saved && (error as { name?: string })?.name === 'ConflictError') {
+        const retry = structuredClone(this.state);
+        try {
+          result = operation(retry, { userId: this.userId, now: this.clock() });
+          await this.source.save(retry);
+          this.state = retry;
+          this.notify();
+          return result;
+        } catch {
+          /* segue para o aviso de erro abaixo */
+        }
+      }
       this.notify();
       throw error;
     }

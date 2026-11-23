@@ -9,7 +9,6 @@ import { LOST_STAGE, STAGE_TONES, WON_STAGE, isOpenStage, openStages, pipelineSt
 import { goalsFor } from '../domain/business.ts';
 import { categoryNames } from '../domain/categories.ts';
 import {
-  COMMERCIAL_PERIODS,
   DEFAULT_FOLLOW_UP_DAYS,
   STAGE_KINDS,
   attemptsWithoutReply,
@@ -48,6 +47,7 @@ import { taskList, taskRow } from '../ui/task-row.ts';
 import { setAgentDraft } from './agents.ts';
 import { commercialTabs, openProposalForm, proposalsOfOpportunity, renderProposalDetail, renderProposals } from './proposals.ts';
 import { findProposal } from './proposals.ts';
+import { renderCallToday } from './call-today.ts';
 
 const ui = {
   mode: 'funil' as 'funil' | 'lista',
@@ -536,29 +536,21 @@ function renderOverview(): SafeHtml {
   const list = visibleOpportunities(data.opportunities);
   const owner = ui.owner === 'todos' ? undefined : ui.owner;
   const m = commercialMetrics(data, ui.period, t, owner);
-  const periodText = COMMERCIAL_PERIODS.find((p) => p.value === ui.period)?.label.toLowerCase() ?? '';
+  const monthWon = commercialMetrics(data, 'mes', t, owner);
 
   return html`
-    ${pageHeader({
-      title: 'Comercial',
-      subtitle: `${pluralize(m.active, 'lead ativo', 'leads ativos')} · ${summary.followUpsDue ? pluralize(summary.followUpsDue, 'pede ação hoje', 'pedem ação hoje') : 'nada pendente por hoje'}`,
-      actions: html`${button({ label: 'Etapas do funil', action: 'commercial:stages', icon: 'settings' })}${button({ label: 'Nova oportunidade', action: 'opportunity:new', variant: 'primary', icon: 'plus' })}`,
-    })}
+    ${prospectHeader()}
     ${commercialTabs('oportunidades')}
 
     <div class="cmetrics-head">
-      ${segmented({ label: 'Período dos números', action: 'commercial:period', value: ui.period, items: COMMERCIAL_PERIODS })}
       ${dailyGoal(m.sentToday)}
     </div>
-    <div class="cmetrics">
-      ${metric({ label: 'Para agir hoje', value: m.actionToday, hint: m.actionToday ? 'Dependem de vocês' : 'Tudo em dia', tone: m.actionToday ? 'warning' : 'success', focus: 'acao', iconName: 'flag' })}
-      ${metric({ label: 'Leads ativos', value: m.active, hint: m.paused ? `+ ${m.paused} para depois` : 'Em negociação', focus: '', iconName: 'commercial' })}
-      ${metric({ label: 'Aguardando cliente', value: m.waiting, hint: 'Vocês já fizeram a parte de vocês', focus: 'aguardando', iconName: 'clock' })}
-      ${metric({ label: 'Mensagens enviadas', value: m.sent, hint: `${pluralize(m.contacted, 'lead contatado', 'leads contatados')} · ${periodText}`, iconName: 'send' })}
-      ${metric({ label: 'Taxa de resposta', value: m.replyRate === null ? '—' : `${Math.round(m.replyRate)}%`, hint: m.contacted ? `${m.replied} de ${m.contacted} responderam` : 'Sem contatos no período', iconName: 'chat' })}
-      ${metric({ label: 'Fechados', value: m.won, hint: finance && m.wonValue ? `${formatCurrency(m.wonValue)} · ${periodText}` : m.lost ? `${m.lost} não fecharam · ${periodText}` : periodText, tone: m.won ? 'success' : undefined, iconName: 'check' })}
+    <div class="cmetrics cmetrics--3">
+      ${metric({ label: 'Pra chamar hoje', value: m.actionToday, hint: m.actionToday ? 'Clique para ver só esses' : 'Tudo em dia', tone: m.actionToday ? 'warning' : 'success', focus: 'acao', iconName: 'flag' })}
+      ${metric({ label: 'Em conversa', value: m.waiting, hint: 'Esperando resposta ou em negociação', focus: 'aguardando', iconName: 'chat' })}
+      ${metric({ label: 'Fechados no mês', value: monthWon.won, hint: finance && monthWon.wonValue ? formatCurrency(monthWon.wonValue) : `${pluralize(m.active, 'lead ativo', 'leads ativos')}${m.paused ? ` · ${m.paused} para depois` : ''}`, tone: monthWon.won ? 'success' : undefined, iconName: 'check' })}
     </div>
-    ${finance && summary.openValue ? html`<p class="muted small cmetrics-foot">${icon('money', 13)} Valor estimado em aberto: <strong>${formatCurrency(summary.openValue)}</strong>${summary.withoutValue ? ` · ${summary.withoutValue} sem valor definido` : ''}</p>` : ''}
+    <p class="muted small cmetrics-foot">${icon('chart', 13)} Taxa de resposta, mensagens enviadas e motivos de perda estão em <a href="#/comercial/relatorios">Relatórios</a>.${finance && summary.openValue ? html` Valor estimado em aberto: <strong>${formatCurrency(summary.openValue)}</strong>.` : ''}</p>
     ${ui.focus ? html`<p class="filter-chip">Mostrando só: <strong>${ui.focus === 'acao' ? 'para agir hoje' : ui.focus === 'aguardando' ? 'aguardando o cliente' : 'para depois'}</strong> <button type="button" class="link-button" data-action="commercial:focus" data-value="${ui.focus}">mostrar todos</button></p>` : ''}
 
     <div class="toolbar">
@@ -587,6 +579,16 @@ function renderOverview(): SafeHtml {
           ? renderList(list)
           : html`<div class="panel">${emptyState({ icon: 'commercial', title: 'Nenhuma oportunidade para este responsável' })}</div>`}
   `;
+}
+
+function prospectHeader(): SafeHtml {
+  const { data } = store();
+  const active = data.opportunities.filter((o) => isOpenStage(o.stage)).length;
+  return pageHeader({
+    title: 'Prospecção',
+    subtitle: `${pluralize(active, 'lead no funil', 'leads no funil')} · cadência de 3, 7 e 15 dias`,
+    actions: html`${button({ label: 'Etapas do funil', action: 'commercial:stages', icon: 'settings' })}${button({ label: 'Novo lead', action: 'opportunity:new', variant: 'primary', icon: 'plus' })}`,
+  });
 }
 
 function metric(options: { label: string; value: number | string; hint: string; tone?: Tone; focus?: typeof ui.focus; iconName: Parameters<typeof icon>[0] }): SafeHtml {
@@ -771,7 +773,7 @@ function openStagesModal(): void {
       </ol>
       <form class="inline-form" data-form="stage:add">
         <label class="visually-hidden" for="stage-new">Nova etapa</label>
-        <input id="stage-new" class="input" name="label" placeholder="Nome da nova etapa (entra antes de Ganho)" autocomplete="off" maxlength="40" />
+        <input id="stage-new" class="input" name="label" placeholder="Nome da nova etapa (entra antes de Fechou)" autocomplete="off" maxlength="40" />
         <button class="btn btn--secondary" type="submit">${icon('plus', 16)}<span>Adicionar etapa</span></button>
       </form>
       <p class="muted small">Para renomear, edite o texto e clique fora do campo.</p>
@@ -819,7 +821,9 @@ export const commercialView: View = {
       ? 'Relatórios comerciais'
       : route.params[0] === 'propostas'
       ? findProposal(store().data, route.params[1])?.title ?? 'Propostas'
-      : findOpportunity(store().data, route.params[0])?.company ?? 'Comercial',
+      : route.params[0] === 'funil'
+      ? 'Funil'
+      : findOpportunity(store().data, route.params[0])?.company ?? 'Quem chamar hoje',
   render: (route: Route) => {
     if (route.params[0] === 'relatorios') return renderReports();
     if (route.params[0] === 'propostas') {
@@ -829,12 +833,13 @@ export const commercialView: View = {
       return html`${pageHeader({ title: 'Proposta não encontrada', back: { href: '#/comercial/propostas', label: 'Propostas' } })}
         <div class="panel">${emptyState({ icon: 'file', title: 'Esta proposta não existe ou foi excluída.' })}</div>`;
     }
+    if (route.params[0] === 'funil') return renderOverview();
     if (route.params[0]) {
       const opp = findOpportunity(store().data, route.params[0]);
       if (opp) return renderDetail(opp);
       return html`${pageHeader({ title: 'Oportunidade não encontrada', back: { href: '#/comercial', label: 'Comercial' } })}
         <div class="panel">${emptyState({ icon: 'commercial', title: 'Esta oportunidade não existe ou foi excluída.' })}</div>`;
     }
-    return renderOverview();
+    return html`${prospectHeader()}${commercialTabs('hoje')}${renderCallToday()}`;
   },
 };
