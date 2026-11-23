@@ -102,4 +102,120 @@
   --content-max: 1320px;
   --focus-ring: 0 0 0 3px rgb(176 138 82 / 0.35);
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  /*
+   * Papéis de cor usados pelas telas. "ink" = texto forte; "paper" = fundos
+   * claros (hover, chips, cartões). Nos temas escuros eles se invertem, e o
+   * marrom continua sendo a cor do menu e dos botões.
+   */
+  --ink-950: var(--brown-950);
+  --ink-900: var(--brown-900);
+  --ink-800: var(--brown-800);
+  --ink-700: var(--brown-700);
+  --ink-600: var(--brown-600);
+  --ink-500: var(--brown-500);
+  --ink-300: var(--brown-300);
+  --paper-0: var(--cream-0);
+  --paper-50: var(--cream-50);
+  --paper-100: var(--cream-100);
+  --paper-200: var(--cream-200);
+  --paper-300: var(--cream-300);
+
+  /* Fundo da logo oficial (o arquivo PNG não é transparente). */
+  --logo-plate: #29211b;
+
+  /* Documentos (proposta, contrato, manuais): sempre com as cores da marca, em qualquer tema. */
+  --doc-paper: #fffdf9;
+  --doc-ink: #2a1d16;
+  --doc-muted: #6f5d4f;
+  --doc-line: #e5dccd;
+  --doc-band: #2a211c;
+  --doc-band-text: #efe8dc;
+  --doc-gold: #b18d57;
+  --doc-highlight: #f2e8d5;
+
+  /* Amostras da escolha de cores (fundo, menu, destaque de cada tema). */
+  --sample-mawe-bg: #f5efe6;    --sample-mawe-menu: #2a211c;    --sample-mawe-accent: #b18d57;
+  --sample-vinho-bg: #f6eee9;   --sample-vinho-menu: #4a1621;   --sample-vinho-accent: #b0596a;
+  --sample-oliva-bg: #f0eee4;   --sample-oliva-menu: #2c3520;   --sample-oliva-accent: #9a9a4c;
+  --sample-rose-bg: #f8efee;    --sample-rose-menu: #43202f;    --sample-rose-accent: #c07f8b;
+  --sample-mar-bg: #eef1ef;     --sample-mar-menu: #1d3036;     --sample-mar-accent: #6a9c97;
+  --sample-noite-bg: #17110d;   --sample-noite-menu: #0f0b08;   --sample-noite-accent: #c9a46a;
+  --sample-grafite-bg: #141414; --sample-grafite-menu: #0b0b0b; --sample-grafite-accent: #c8b48e;
 }
+
+/* ------------------------------------------------------------------ Temas claros */
+
+:root[data-tema="vinho"] {
+  --brown-950: #2c0b11; --brown-900: #4a1621; --brown-800: #5e1f2c; --brown-700: #74303e; --brown-600: #8f4a57; --brown-500: #a86b76; --brown-300: #d2a9b0;
+  --cream-0: #fffcfa; --cream-50: #fbf6f3; --cream-100: #f6eee9; --cream-200: #eddfd8; --cream-300: #dfc9c0;
+  --gold-600: #8e3a4b; --gold-500: #b0596a; --gold-300: #ddb3bb; --gold-100: #f5e1e4;
+  --text: #2c1418; --text-2: #5e3d43; --text-3: #8a6a6f; --line: #eadad3; --line-strong: #dfc9c0;
+  --accent-fg: #8e3a4b; --chart-grid: #efe1db; --focus-ring: 0 0 0 3px rgb(176 89 106 / 0.35);
+}
+:root[data-tema="oliva"] {
+  --brown-950: #161b0f; --brown-900: #2c3520; --brown-800: #3a4529; --brown-700: #4d5a37; --brown-600: #66744d; --brown-500: #85926a; --brown-300: #bcc4a5;
+  --cream-0: #fdfdf8; --cream-50: #f8f7ef; --cream-100: #f0eee4; --cream-200: #e5e2d2; --cream-300: #d5d1bb;
+  --gold-600: #74742f; --gold-500: #9a9a4c; --gold-300: #d0cf9c; --gold-100: #eeedd2;
+  --text: #1f2418; --text-2: #4b5240; --text-3: #767d69; --line: #e1ddcb; --line-strong: #d5d1bb;
+  --accent-fg: #66672a; --chart-grid: #e7e4d4; --focus-ring: 0 0 0 3px rgb(154 154 76 / 0.35);
+}
+:root[data-tema="rose"] {
+  --brown-950: #2a1019; --brown-900: #43202f; --brown-800: #57293c; --brown-700: #6e3a4f; --brown-600: #8a5468; --brown-500: #a57586; --brown-300: #d3b1bd;
+  --cream-0: #fffbfb; --cream-50: #fcf6f5; --cream-100: #f8efee; --cream-200: #efe0df; --cream-300: #e2cccc;
+  --gold-600: #9a5866; --gold-500: #c07f8b; --gold-300: #e4bfc6; --gold-100: #f8e6e9;
+  --text: #2d1720; --text-2: #5f4049; --text-3: #8b6d76; --line: #ecdcdb; --line-strong: #e2cccc;
+  --accent-fg: #93515f; --chart-grid: #f0e2e1; --focus-ring: 0 0 0 3px rgb(192 127 139 / 0.35);
+}
+:root[data-tema="mar"] {
+  --brown-950: #0f1c20; --brown-900: #1d3036; --brown-800: #263f46; --brown-700: #335259; --brown-600: #4a6c72; --brown-500: #6b8b90; --brown-300: #a9c1c2;
+  --cream-0: #fcfdfc; --cream-50: #f6f8f6; --cream-100: #eef1ef; --cream-200: #e0e6e3; --cream-300: #ccd6d2;
+  --gold-600: #4b7975; --gold-500: #6a9c97; --gold-300: #b4d0cc; --gold-100: #deece9;
+  --text: #16252a; --text-2: #3d5157; --text-3: #6b7e83; --line: #dce3e0; --line-strong: #ccd6d2;
+  --accent-fg: #3f6c68; --chart-grid: #e1e7e4; --focus-ring: 0 0 0 3px rgb(106 156 151 / 0.35);
+}
+
+/* ------------------------------------------------------------------ Temas escuros */
+
+:root[data-tema="noite"],
+:root[data-tema="grafite"] {
+  color-scheme: dark;
+  /* Texto claro sobre fundos escuros. */
+  --ink-950: #faf4ea; --ink-900: #f1e8da; --ink-800: #e4d7c4; --ink-700: #d2c1aa; --ink-600: #b9a68e; --ink-500: #9f8b75; --ink-300: #6f604f;
+  --text: #ece3d5; --text-2: #c2b3a0; --text-3: #988873;
+  --text-on-dark: #efe8dc; --text-on-dark-2: #bfae9c;
+  /* Botões e menu um pouco mais claros que o fundo, para se destacarem. */
+  --brown-800: #4a3829; --brown-700: #5c4734;
+  --gold-600: #d6b37c; --gold-500: #c9a46a; --gold-300: #8a7048;
+  --neutral-fg: #c9bba8;  --neutral-bg: #2b231c;
+  --info-fg: #a9c3da;     --info-bg: #1e2a33;
+  --progress-fg: #dcc6a8; --progress-bg: #33281e;
+  --warning-fg: #e8c27c;  --warning-bg: #36291a;
+  --success-fg: #a9cfa3;  --success-bg: #1f2f21;
+  --danger-fg: #eba597;   --danger-bg: #3a201b;
+  --accent-fg: #e0c08a;   --accent-bg: #352a19;
+  --cal-0-bg: #4a3829; --cal-0-fg: #efe8dc;
+  --cal-1-bg: #1e2a33; --cal-1-fg: #a9c3da;
+  --cal-2-bg: #1f2f21; --cal-2-fg: #a9cfa3;
+  --cal-3-bg: #36291a; --cal-3-fg: #e8c27c;
+  --cal-4-bg: #3a201b; --cal-4-fg: #eba597;
+  --cal-5-bg: #2d2236; --cal-5-fg: #cdb3e0;
+  --cal-6-bg: #352a19; --cal-6-fg: #e0c08a;
+  --cal-7-bg: #1b2e2b; --cal-7-fg: #9fd0c8;
+  --chart-line: #e4d7c4; --chart-fill: #c9a46a; --chart-grid: #2f261e; --chart-expense: #d88b7c;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.25), 0 4px 14px rgb(0 0 0 / 0.3);
+  --focus-ring: 0 0 0 3px rgb(201 164 106 / 0.4);
+}
+:root[data-tema="noite"] {
+  --brown-950: #0a0705; --brown-900: #0f0b08;
+  --bg: #17110d; --surface: #201813; --surface-2: #1b1410; --line: #33281f; --line-strong: #44362a;
+  --paper-0: #261d17; --paper-50: #1d1611; --paper-100: #17110d; --paper-200: #2e241c; --paper-300: #44362a;
+}
+:root[data-tema="grafite"] {
+  --brown-950: #070707; --brown-900: #0b0b0b; --brown-800: #333230; --brown-700: #43413e;
+  --bg: #141414; --surface: #1c1c1b; --surface-2: #181818; --line: #2d2c2a; --line-strong: #3b3a37;
+  --paper-0: #222221; --paper-50: #1a1a19; --paper-100: #141414; --paper-200: #2a2928; --paper-300: #3b3a37;
+  --neutral-bg: #262524; --progress-bg: #2b2925; --accent-bg: #2e2a22;
+}
+

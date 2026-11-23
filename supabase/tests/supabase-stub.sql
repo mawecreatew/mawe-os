@@ -13,3 +13,11 @@ insert into auth.users values
   ('11111111-1111-1111-1111-111111111111', 'maria@example.com'),
   ('22222222-2222-2222-2222-222222222222', 'wesley@example.com'),
   ('33333333-3333-3333-3333-333333333333', 'intruso@example.com');
+
+-- Armazenamento de arquivos (Storage), só o necessário para testar storage.sql.
+create schema storage;
+create table storage.buckets (id text primary key, name text not null, public boolean default false, file_size_limit bigint, allowed_mime_types text[]);
+create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text references storage.buckets (id), name text not null, owner uuid default auth.uid());
+alter table storage.objects enable row level security;
+grant usage on schema storage to anon, authenticated;
+grant select, insert, update, delete on storage.objects to authenticated;

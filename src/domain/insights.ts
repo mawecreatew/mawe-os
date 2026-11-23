@@ -3,6 +3,7 @@
  * funil de vendas está perdendo clientes. Funções puras (testáveis).
  */
 import { addDays, type ISODate } from '../core/dates.ts';
+import { afterSalesDue } from './aftersales.ts';
 import { followStatus } from './commercial.ts';
 import { upcomingBills } from './finance.ts';
 import { WON_STAGE, isOpenStage, openStages } from './labels.ts';
@@ -11,7 +12,7 @@ import type { AppData, ID, Opportunity } from './types.ts';
 
 // ---------------------------------------------------------------- Foco de hoje
 
-export type FocusKind = 'followup' | 'task' | 'bill' | 'delivery' | 'domain';
+export type FocusKind = 'followup' | 'task' | 'bill' | 'delivery' | 'domain' | 'aftersales';
 
 export interface FocusItem {
   key: string;
@@ -125,7 +126,22 @@ export function todayFocus(data: AppData, today: ISODate, options: { finance: bo
     });
   }
 
-  const weight: Record<FocusKind, number> = { followup: 0, bill: 1, delivery: 2, task: 3, domain: 4 };
+  // Pós-venda: o próximo contato combinado de cada cliente já entregue.
+  for (const { client, point } of afterSalesDue(data, today, today)) {
+    items.push({
+      key: `a:${client.id}:${point.key}`,
+      kind: 'aftersales',
+      title: `Pós-venda: ${client.company}`,
+      subtitle: `${point.label} · ${point.action}`,
+      date: point.date,
+      // Contato de relacionamento: não acusa atraso, só aparece até ser feito.
+      overdue: false,
+      href: `#/clientes/${client.id}`,
+      ownerIds: [],
+    });
+  }
+
+  const weight: Record<FocusKind, number> = { followup: 0, bill: 1, delivery: 2, task: 3, aftersales: 4, domain: 5 };
   return items.sort((a, b) => a.date.localeCompare(b.date) || weight[a.kind] - weight[b.kind] || a.title.localeCompare(b.title));
 }
 

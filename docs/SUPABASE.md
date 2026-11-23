@@ -30,6 +30,10 @@ O Supabase tem plano gratuito, suficiente para o Mawe OS. Nada aqui exige cartã
 2. Abra o arquivo [`supabase/schema.sql`](../supabase/schema.sql) deste projeto, copie
    **todo** o conteúdo, cole no editor e clique em **Run**.
 3. Deve aparecer "Success". (Se rodar de novo, não tem problema.)
+4. Para guardar os prints das **Aprovações**, abra uma nova query, cole **todo** o arquivo
+   [`supabase/storage.sql`](../supabase/storage.sql) e clique em **Run**. Ele cria a pasta
+   privada `provas`, onde só os membros do Mawe OS conseguem ver, enviar e apagar arquivos.
+   Quem já usa o Mawe OS só precisa rodar este arquivo uma vez.
 
 ## 3. Bloquear cadastros públicos
 
@@ -105,6 +109,7 @@ Para voltar ao modo protótipo (dados fictícios, sem login), basta renomear ou 
 | "Conta sem acesso"                         | Rode o passo 5 com o e-mail correto                               |
 | "A tabela workspace está vazia"            | Rode o passo 2                                                     |
 | "Não foi possível conectar ao Supabase"    | Verifique a internet e se o projeto não está pausado               |
+| "O armazenamento de provas ainda não foi ativado" | Rode `supabase/storage.sql` (passo 2, item 4)               |
 
 **Esqueceu a senha?** Em **Authentication → Users**, clique nos três pontinhos da conta e
 use a opção de redefinir/enviar recuperação de senha, ou defina uma nova senha provisória.
@@ -119,6 +124,8 @@ psql -d mawe_rls -f supabase/tests/supabase-stub.sql
 psql -d mawe_rls -f supabase/schema.sql
 sed -e 's/EMAIL-DA-MARIA@exemplo.com/maria@example.com/; s/EMAIL-DO-WESLEY@exemplo.com/wesley@example.com/' supabase/members.sql | psql -d mawe_rls
 psql -d mawe_rls -f supabase/tests/rls.test.sql
+psql -d mawe_rls -f supabase/storage.sql
+psql -d mawe_rls -f supabase/tests/storage.test.sql
 ```
 
 O teste de navegação (`npm run test:e2e`) usa um Supabase simulado (`scripts/fake-supabase.mjs`).

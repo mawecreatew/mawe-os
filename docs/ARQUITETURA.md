@@ -68,6 +68,24 @@ Se a operação lançar erro, nada é alterado e o erro aparece como aviso.
 - `domain/normalize.ts` ganhou **ajustes únicos** (`meta.migrations`): rodam uma vez, de forma
   determinística, nos dados já salvos (ex.: tirar lembretes antigos de etapas que esperam o cliente).
 
+## Áreas adicionadas na v0.7
+
+- `domain/processes.ts`: manual de processos (`AppData.processes`), com etapas iniciais de ids
+  fixos criadas pelo `normalize` e ligação com as etapas de produção dos projetos (`stageName`).
+- `domain/approvals.ts`: aprovações com prova (`AppData.approvals`). O arquivo da prova fica no
+  Supabase Storage (bucket privado `provas`, `supabase/storage.sql`) ou, no protótipo local,
+  reduzido junto com os dados. `app/proofs.ts` envia, mostra (download autenticado) e apaga.
+- `domain/documents.ts`: proposta, contrato, manual do site e manual de processos montados em
+  blocos puros (testáveis). `ui/document.ts` mostra a prévia e imprime só a folha
+  (`#print-root` + `@media print`), sem dependências.
+- `domain/aftersales.ts`: calendário de pós-venda a partir de `Project.publishedAt` (gravado ao
+  virar "publicado"); os contatos feitos ficam em `Client.afterSales`.
+- `domain/daily.ts`: prioridades e alinhamento do dia (`AppData.daily`, guarda 60 dias) e dados
+  da agência (`AppData.agency`).
+- Temas (`app/theme.ts`): `data-tema` no `<html>`, cores em `styles/tokens.css`. As telas usam
+  `--ink-*` para texto forte e `--paper-*` para fundos claros, o que permite temas escuros sem
+  mexer em cada componente. Documentos usam `--doc-*`, iguais em qualquer tema.
+
 ## Permissões
 
 `domain/permissions.ts` define o que cada papel pode fazer (`socio`, `colaborador`).

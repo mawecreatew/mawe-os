@@ -188,8 +188,8 @@
 }
 
 .profile__option.is-active {
-  background: var(--cream-50);
-  color: var(--brown-900);
+  background: var(--paper-50);
+  color: var(--ink-900);
 }
 
 .profile__note {
@@ -232,12 +232,12 @@
   gap: 6px 8px;
   padding: 8px var(--space-10);
   border-bottom: 1px solid var(--line);
-  background: var(--cream-50);
+  background: var(--paper-50);
   color: var(--text-2);
   font-size: var(--text-sm);
 }
 
-.env-banner strong { color: var(--brown-800); font-weight: 600; }
+.env-banner strong { color: var(--ink-800); font-weight: 600; }
 
 .env-banner__dot {
   width: 7px;
@@ -350,7 +350,7 @@
 .auth-card__brand .brand__product { color: var(--gold-300); }
 .auth-card__brand .auth-card__name { color: var(--text-on-dark); }
 .auth-card__logo { width: 220px; max-width: 100%; height: auto; }
-.auth-card__name { font-family: var(--font-display); font-size: 1.5rem; color: var(--brown-900); line-height: 1.1; }
+.auth-card__name { font-family: var(--font-display); font-size: 1.5rem; color: var(--ink-900); line-height: 1.1; }
 .auth-card__title { font-size: var(--text-2xl); }
 .auth-card__text { margin: var(--space-2) 0 var(--space-6); color: var(--text-2); }
 .auth-card__foot { margin-top: var(--space-5); font-size: var(--text-xs); color: var(--text-3); }
@@ -380,3 +380,12 @@
 .sidebar .profile__logout { margin-top: var(--space-3); color: var(--text-on-dark-2); padding-left: 6px; }
 .sidebar .profile__logout:hover { background: rgb(243 235 223 / 0.08); color: var(--cream-0); }
 .env-banner--connected .env-banner__dot { background: #6f9a6a; }
+
+/* Em temas com outra cor de menu, a logo (PNG com fundo marrom) ganha uma moldura arredondada. */
+:root[data-tema] .brand__logo {
+  border-radius: var(--radius);
+  background: var(--logo-plate);
+  box-shadow: 0 0 0 6px var(--logo-plate);
+}
+
+:root[data-tema] .brand__product { margin-top: 6px; }

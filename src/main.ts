@@ -31,6 +31,10 @@ import { systemView } from './views/system.ts';
 import { tasksView } from './views/tasks.ts';
 import { categoriesView } from './views/categories.ts';
 import { teamView } from './views/team.ts';
+import { approvalsView } from './views/approvals.ts';
+import { processesView } from './views/processes.ts';
+import { installProofLoader, setProofLookup } from './app/proofs.ts';
+import { applySavedTheme } from './app/theme.ts';
 
 const ROUTES: Record<string, View> = {
   painel: dashboardView,
@@ -47,6 +51,8 @@ const ROUTES: Record<string, View> = {
   sistema: systemView,
   categorias: categoriesView,
   equipe: teamView,
+  processos: processesView,
+  aprovacoes: approvalsView,
 };
 
 const notFoundView: View = {
@@ -174,6 +180,7 @@ async function prepareAccess(): Promise<StoreOptions | null> {
 }
 
 async function start(): Promise<void> {
+  applySavedTheme();
   installEventDelegation();
   onActionError((error) => {
     // A mensagem já aparece na tela; no console fica só como aviso (ex.: validação de formulário).
@@ -198,6 +205,8 @@ async function start(): Promise<void> {
     return;
   }
   setStore(store);
+  setProofLookup((approvalId) => (store.data.approvals ?? []).find((a) => a.id === approvalId)?.proof ?? undefined);
+  installProofLoader();
   if (access.lockedUserId) startSync(store);
 
   setRenderer(render);

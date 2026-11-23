@@ -3,7 +3,7 @@
 Escritório digital privado da **Mawe Create** — operação diária, comercial, clientes,
 projetos, tarefas, biblioteca e agentes de IA, compartilhado por Maria Eduarda e Wesley.
 
-> **Status: v0.6.** Funciona de verdade no navegador. Tem dois modos:
+> **Status: v0.7.** Funciona de verdade no navegador. Tem dois modos:
 > - **Protótipo local** (padrão): sem login, com dados **fictícios** salvos só neste navegador.
 > - **Com login (Supabase)**: cada sócio entra com sua conta e os dois veem os mesmos dados.
 >   Para ativar, siga [`docs/SUPABASE.md`](docs/SUPABASE.md).
@@ -49,6 +49,25 @@ O teste de navegação usa o Playwright. Se for a primeira vez na sua máquina, 
   **Funil de vendas** mostra a conversão de cada etapa e aponta onde vocês mais perdem
   clientes, com uma sugestão do que fazer. Depois, metas do mês e projetos em andamento.
 - **Menu** agrupado pelo caminho do dinheiro: Vender, Entregar, Gestão e Recursos.
+- **Painel › o dia (v0.7)**: as **3 prioridades** de cada sócio (cada um vê as do outro) e o
+  **alinhamento da noite** (o que aconteceu, o que travou, o que fazer amanhã). O "amanhã"
+  aparece no topo do dia seguinte.
+- **Processos (v0.7)**: o manual da agência, do primeiro contato ao pós-venda. Cada etapa tem
+  objetivo, quem faz, tempo e passo a passo, e pode ser editada. As etapas ligadas à produção
+  aparecem dentro do projeto ("Como fazer esta etapa"). O manual sai em PDF para treinar
+  quem entrar na equipe.
+- **Aprovações (v0.7)**: briefing recebido, proposta aceita, prévia aprovada, alteração
+  pedida... com data, canal, a frase do cliente e o **print ou PDF** como prova. Aparece no
+  projeto (com as rodadas de alteração usadas), na ficha do cliente e na proposta.
+- **Documentos em PDF (v0.7)**: proposta, contrato (pede CPF/CNPJ e endereço do cliente),
+  manual do site para entregar ao cliente e manual de processos, com a marca. "Baixar PDF"
+  abre a impressão do navegador ("Salvar como PDF"), sem bibliotecas externas.
+- **Pós-venda (v0.7)**: quando um projeto vira "publicado", a ficha do cliente ganha o
+  calendário de contatos (7 dias, 30 dias e a cada 3 meses), com mensagem pronta da
+  Biblioteca. O próximo contato aparece no Foco de hoje.
+- **Cores do sistema (v0.7)**: sete temas (Mawe, Vinho, Oliva, Rosé, Mar, Noite e Grafite),
+  escolhidos por cada pessoa no menu ou em Sistema. Dados da agência (CPF/CNPJ, Pix, cidade)
+  ficam em Sistema e entram nos documentos.
 - **Comercial (v0.6)**: cada etapa diz **de quem é a vez** (nossa vez, vez do cliente ou pausado).
   Só fica pendente o que depende de vocês; quem espera o cliente mostra "aguardando há X dias" e,
   se a etapa pedir, "hora do follow-up" depois de N dias (para depois de 3 tentativas sem resposta).

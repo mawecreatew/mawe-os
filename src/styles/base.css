@@ -28,17 +28,17 @@ h1, h2, h3 {
   font-family: var(--font-display);
   font-weight: 600;
   letter-spacing: -0.01em;
-  color: var(--brown-900);
+  color: var(--ink-900);
 }
 
 a {
-  color: var(--brown-700);
+  color: var(--ink-700);
   text-decoration-color: var(--gold-300);
   text-underline-offset: 3px;
 }
 
 a:hover {
-  color: var(--brown-900);
+  color: var(--ink-900);
 }
 
 button,
@@ -62,7 +62,7 @@ button {
 code {
   font-family: var(--font-mono);
   font-size: 0.85em;
-  background: var(--cream-200);
+  background: var(--paper-200);
   padding: 1px 5px;
   border-radius: 4px;
 }
