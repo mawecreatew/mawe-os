@@ -81,6 +81,15 @@ O teste de navegação usa o Playwright. Se for a primeira vez na sua máquina, 
   versão mais nova, sem perder nada.
 - A Central de agentes saiu do menu (continua em `#/agentes`).
 
+### Relatório do site (v0.8.1)
+
+- Aba **Site** na ficha do cliente e página **Operações › Relatórios dos sites**: guarda o ID
+  do projeto no **Microsoft Clarity** (gratuito), os números de cada mês (visitas, pessoas,
+  cliques no WhatsApp, Instagram e telefone), mostra o gráfico e gera o **PDF para o cliente**.
+- **Código para o site**: aviso de cookies (Aceitar e Recusar) + Clarity, que só carrega
+  depois que a pessoa aceita; cliques no WhatsApp, Instagram e telefone viram eventos.
+- No começo do mês (até o dia 10), o Pra fazer hoje lembra de anotar os números.
+
 ### Até a v0.7
 
 - **Painel (gestão)**: **gráfico de faturamento** por período (7 dias, 30 dias, este mês,

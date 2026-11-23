@@ -34,6 +34,7 @@ import { icon } from '../ui/icons.ts';
 import { closeModal, confirmAction, openModal, toast } from '../ui/overlay.ts';
 import { approvalList } from './approvals.ts';
 import { contractRows } from './contracts.ts';
+import { renderSiteTab } from './site-report.ts';
 
 export const CLIENT_TABS = [
   { id: 'geral', label: 'Visão geral', icon: 'clients' },
@@ -43,6 +44,7 @@ export const CLIENT_TABS = [
   { id: 'acessos', label: 'Acessos', icon: 'lock' },
   { id: 'contratos', label: 'Contratos', icon: 'repeat' },
   { id: 'depoimentos', label: 'Depoimentos', icon: 'chat' },
+  { id: 'site', label: 'Site', icon: 'globe' },
 ] as const;
 
 export type ClientTab = (typeof CLIENT_TABS)[number]['id'];
@@ -275,6 +277,8 @@ export function renderClientTab(client: Client, tab: ClientTab): SafeHtml {
       return renderContracts(client);
     case 'depoimentos':
       return renderTestimonials(client);
+    case 'site':
+      return renderSiteTab(client);
     default:
       return html``;
   }

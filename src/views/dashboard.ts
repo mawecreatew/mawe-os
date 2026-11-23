@@ -86,6 +86,7 @@ const FOCUS_META: Record<FocusKind, { icon: IconName; label: string }> = {
   domain: { icon: 'globe', label: 'Domínio' },
   aftersales: { icon: 'chat', label: 'Pós-venda' },
   contract: { icon: 'repeat', label: 'Contrato' },
+  site: { icon: 'globe', label: 'Relatório do site' },
 };
 
 function focusRow(item: FocusItem, t: string): SafeHtml {

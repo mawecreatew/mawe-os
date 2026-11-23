@@ -51,6 +51,8 @@ export function fillDefaults(data: AppData): AppData {
     if (c.source === undefined) c.source = null;
     if (c.referredBy === undefined) c.referredBy = null;
     if (typeof c.referredByName !== 'string') c.referredByName = '';
+    if (c.site === undefined) c.site = null;
+    else if (c.site && !Array.isArray(c.site.stats)) c.site.stats = [];
   }
   for (const p of d.projects) {
     if (!p.type) p.type = 'site';
