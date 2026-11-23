@@ -6,6 +6,7 @@ import { addDays, type ISODate } from '../core/dates.ts';
 import { afterSalesDue } from './aftersales.ts';
 import { APPROACH_STAGE, WARMUP_STAGE } from './cadence.ts';
 import { contractState, contractsEndingSoon } from './clientcare.ts';
+import { siteStatsMissing } from './sitereport.ts';
 import { followStatus } from './commercial.ts';
 import { upcomingBills } from './finance.ts';
 import { WON_STAGE, isOpenStage, openStages } from './labels.ts';
@@ -14,7 +15,7 @@ import type { AppData, ID, Opportunity } from './types.ts';
 
 // ---------------------------------------------------------------- Foco de hoje
 
-export type FocusKind = 'followup' | 'task' | 'bill' | 'delivery' | 'domain' | 'aftersales' | 'contract';
+export type FocusKind = 'followup' | 'task' | 'bill' | 'delivery' | 'domain' | 'aftersales' | 'contract' | 'site';
 
 export interface FocusItem {
   key: string;
@@ -108,6 +109,21 @@ export function todayFocus(data: AppData, today: ISODate, options: { finance: bo
     });
   }
 
+  // Começo do mês: anotar os números dos sites acompanhados no Clarity.
+  const sites = siteStatsMissing(data, today);
+  if (sites.length) {
+    items.push({
+      key: 's:numeros',
+      kind: 'site',
+      title: sites.length === 1 ? `Anotar os números do site de ${sites[0].company}` : `Anotar os números de ${sites.length} sites`,
+      subtitle: 'Copiar do Clarity e mandar o relatório em PDF ao cliente',
+      date: today,
+      overdue: false,
+      href: '#/sites',
+      ownerIds: [],
+    });
+  }
+
   // Domínios de clientes que renovam nos próximos 30 dias.
   for (const c of data.clients) {
     const renews = c.domain?.renewsOn;
@@ -187,7 +203,7 @@ export function todayFocus(data: AppData, today: ISODate, options: { finance: bo
     });
   }
 
-  const weight: Record<FocusKind, number> = { followup: 0, bill: 1, delivery: 2, task: 3, aftersales: 4, contract: 5, domain: 6 };
+  const weight: Record<FocusKind, number> = { followup: 0, bill: 1, delivery: 2, task: 3, aftersales: 4, contract: 5, site: 6, domain: 7 };
   return items.sort((a, b) => a.date.localeCompare(b.date) || weight[a.kind] - weight[b.kind] || a.title.localeCompare(b.title));
 }
 

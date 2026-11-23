@@ -197,6 +197,8 @@ export interface Client {
   referredBy?: ID | null;
   /** Quem indicou, quando não é cliente cadastrado. */
   referredByName?: string;
+  /** Site do cliente acompanhado no Microsoft Clarity e os números de cada mês. */
+  site?: SiteAnalytics | null;
   createdAt: Timestamp;
   isDemo?: boolean;
 }
@@ -213,6 +215,30 @@ export interface StoredFile {
   category: string;
   uploadedAt: Timestamp;
   authorId: ID;
+}
+
+/** Acompanhamento do site do cliente (números anotados do Clarity). */
+export interface SiteAnalytics {
+  url: string;
+  /** ID do projeto no Microsoft Clarity (ex.: k8x2abc). */
+  clarityId: string;
+  stats: SiteStat[];
+}
+
+/** Números de um mês do site (anotados à mão a partir do Clarity). */
+export interface SiteStat {
+  /** AAAA-MM */
+  month: string;
+  visits: number;
+  /** Pessoas diferentes (usuários distintos). */
+  people: number | null;
+  whatsapp: number | null;
+  instagram: number | null;
+  phone: number | null;
+  /** De onde vieram mais visitas (Google, Instagram, direto...). */
+  topSource: string;
+  /** Observação que vai no relatório do cliente. */
+  notes: string;
 }
 
 /** Onde está o acesso de uma conta do cliente. A senha fica no gerenciador de senhas. */

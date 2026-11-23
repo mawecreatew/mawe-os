@@ -118,6 +118,7 @@ try {
       ['Operações', 'Projetos', 'Projetos'],
       ['Operações', 'Aprovações', 'Aprovações'],
       ['Operações', 'Onboarding', 'Onboarding'],
+      ['Operações', 'Relatórios dos sites', 'Relatórios dos sites'],
       ['Operações', 'Contratos e vencimentos', 'Contratos e vencimentos'],
       ['Marketing', 'Instagram da Mawe', 'Marketing da Mawe'],
       ['Marketing', 'Calendário de conteúdo', 'Calendário de conteúdo'],
@@ -817,6 +818,32 @@ try {
     await page.locator('.mini-board__col', { hasText: 'Gravando' }).locator('.mini-card', { hasText: 'Antes e depois E2E' }).waitFor();
     await go('#/marketing/origem');
     await page.locator('.table', { hasText: 'Google Maps' }).waitFor();
+  });
+
+  await step('site do cliente: Clarity, números do mês, PDF e código de instalação', async () => {
+    await go('#/clientes');
+    await page.locator('.az-row').first().click();
+    await page.waitForURL(/#\/clientes\/cli_/);
+    await page.locator('.subnav__item', { hasText: 'Site' }).click();
+    await page.getByRole('button', { name: 'Configurar' }).first().click();
+    await modal().locator('input[name=url]').fill('https://exemplo-ficticio.com.br');
+    await modal().locator('input[name=clarityId]').fill('https://clarity.microsoft.com/projects/view/k8x2abc/dashboard');
+    await submitModal();
+    await page.locator('code', { hasText: 'k8x2abc' }).waitFor();
+    await page.getByRole('button', { name: 'Anotar mês' }).click();
+    await modal().locator('input[name=visits]').fill('1.234');
+    await modal().locator('input[name=whatsapp]').fill('18');
+    await submitModal();
+    await page.locator('.stat__value', { hasText: '1.234' }).waitFor();
+    await page.getByRole('button', { name: 'PDF para o cliente' }).click();
+    await modal().locator('.doc', { hasText: 'RELATÓRIO DO SITE' }).waitFor();
+    await modal().getByRole('button', { name: 'Fechar' }).first().click();
+    await page.getByRole('button', { name: 'Código para o site' }).click();
+    assert.match(await modal().locator('#site-snippet').inputValue(), /clarity\.ms\/tag/);
+    await modal().getByRole('button', { name: 'Fechar' }).first().click();
+    await go('#/sites');
+    await expectTitle('Relatórios dos sites');
+    assert.ok((await page.locator('.site-row').count()) >= 1);
   });
 
   await step('kit: orçamento rápido soma os serviços escolhidos', async () => {

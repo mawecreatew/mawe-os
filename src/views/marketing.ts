@@ -30,6 +30,7 @@ import type { View } from '../app/view.ts';
 import { badge, button, emptyState, externalLink, pageHeader, panel } from '../ui/components.ts';
 import { formActions, selectField, textField, textareaField } from '../ui/forms.ts';
 import { icon, type IconName } from '../ui/icons.ts';
+import { lineChart } from '../ui/line-chart.ts';
 import { closeModal, confirmAction, openModal, toast } from '../ui/overlay.ts';
 
 const TABS: Array<{ id: string; label: string; icon: IconName }> = [
@@ -52,37 +53,12 @@ function signed(n: number | null): string {
 
 // ---------------------------------------------------------------- Seguidores
 
-const W = 1000;
-const H = 220;
-
 function followersChart(stats: InstagramStat[]): SafeHtml {
-  if (stats.length < 2) {
-    return html`<p class="muted small">${icon('info', 13)} O gráfico aparece a partir do segundo mês anotado.</p>`;
-  }
-  const values = stats.map((s) => s.followers);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const pad = Math.max(1, Math.round((max - min) * 0.15));
-  const lo = Math.max(0, min - pad);
-  const hi = max + pad;
-  const x = (i: number) => (i / (stats.length - 1)) * W;
-  const y = (v: number) => H - ((v - lo) / (hi - lo || 1)) * H;
-  const points = stats.map((s, i) => `${x(i).toFixed(1)},${y(s.followers).toFixed(1)}`).join(' ');
-  const every = Math.max(1, Math.ceil(stats.length / 8));
-  return html`<figure class="follow-chart">
-    <div class="follow-chart__plot">
-      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Seguidores de ${monthLabel(stats[0].month)} a ${monthLabel(stats.at(-1)!.month)}: de ${values[0]} para ${values.at(-1)}">
-        ${[0, 0.5, 1].map((f) => html`<line class="follow-chart__grid" x1="0" x2="${W}" y1="${H * f}" y2="${H * f}" vector-effect="non-scaling-stroke" />`)}
-        <polygon class="follow-chart__area" points="0,${H} ${points} ${W},${H}" />
-        <polyline class="follow-chart__line" points="${points}" vector-effect="non-scaling-stroke" />
-      </svg>
-      ${stats.map((s, i) => html`<span class="follow-chart__dot" style="left:${(x(i) / W) * 100}%; bottom:${((H - y(s.followers)) / H) * 100}%" title="${monthLabel(s.month)}: ${s.followers.toLocaleString('pt-BR')} seguidores"></span>`)}
-    </div>
-    <div class="follow-chart__x" aria-hidden="true">
-      ${stats.map((s, i) => (i % every === 0 || i === stats.length - 1 ? html`<span style="left:${(x(i) / W) * 100}%">${monthLabel(s.month)}</span>` : ''))}
-    </div>
-    <figcaption class="follow-chart__range"><span>${hi.toLocaleString('pt-BR')}</span><span>${lo.toLocaleString('pt-BR')}</span></figcaption>
-  </figure>`;
+  return lineChart(
+    stats.map((s) => ({ label: monthLabel(s.month), value: s.followers })),
+    stats.length ? `Seguidores de ${monthLabel(stats[0].month)} a ${monthLabel(stats.at(-1)!.month)}` : 'Seguidores',
+    'seguidores',
+  );
 }
 
 function openStatForm(stat?: InstagramStat): void {

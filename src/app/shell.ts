@@ -15,6 +15,7 @@ import { contractsEndingSoon, inOnboarding } from '../domain/clientcare.ts';
 import { upcomingBills } from '../domain/finance.ts';
 import { overdueTasks } from '../domain/selectors.ts';
 import { teamMembers } from '../domain/people.ts';
+import { siteStatsMissing } from '../domain/sitereport.ts';
 import { unreadChat } from '../domain/workspace.ts';
 import { avatar } from '../ui/components.ts';
 import { icon, type IconName } from '../ui/icons.ts';
@@ -80,6 +81,7 @@ const GROUPS: NavGroup[] = [
       { href: '#/projetos', label: 'Projetos', icon: 'kanban', match: atSection('projetos') },
       { href: '#/aprovacoes', label: 'Aprovações', icon: 'check', match: atSection('aprovacoes') },
       { href: '#/onboarding', label: 'Onboarding', icon: 'flag', match: atSection('onboarding'), count: () => store().data.clients.filter((c) => inOnboarding(store().data, c)).length, countTone: 'muted' },
+      { href: '#/sites', label: 'Relatórios dos sites', icon: 'globe', match: atSection('sites'), count: () => siteStatsMissing(store().data, today()).length, countTone: 'alert' },
       { href: '#/contratos', label: 'Contratos e vencimentos', icon: 'repeat', match: atSection('contratos'), count: () => contractsEndingSoon(store().data, today()).length, countTone: 'alert' },
     ],
   },

@@ -45,6 +45,7 @@ import { notesView } from './views/notes.ts';
 import { onboardingView } from './views/onboarding.ts';
 import { planningView } from './views/planning.ts';
 import { reportView } from './views/report.ts';
+import { sitesView } from './views/site-report.ts';
 import { trainingView } from './views/training.ts';
 
 const ROUTES: Record<string, View> = {
@@ -74,6 +75,7 @@ const ROUTES: Record<string, View> = {
   relatorio: reportView,
   treinamento: trainingView,
   kit: kitView,
+  sites: sitesView,
 };
 
 const notFoundView: View = {
