@@ -144,7 +144,7 @@ describe('cadência de prospecção', () => {
     assert.equal(o.stage, 'negociacao');
     const w = lead('abordar');
     startWarmup(data, w.id, TODAY, maria);
-    assert.equal(callToday(data, TODAY).find((i) => i.opp.id === w.id)?.what, 'Dia 1 de 3');
+    assert.equal(callToday(data, TODAY).find((i) => i.opp.id === w.id)?.what, 'Dia 1 de 3 · aquecer: seguir e curtir 2 posts');
     assert.equal(callToday(data, addDays(TODAY, 2)).find((i) => i.opp.id === w.id)?.group, 'primeira');
     const fresh = lead('aquecimento');
     assert.equal(fresh.followUpDate, addDays(TODAY, 2), 'lead novo em aquecimento já ganha a data');

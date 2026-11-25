@@ -96,7 +96,28 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([bytes], { type });
 }
 
+/** O arquivo em si (para salvar na galeria ou compartilhar). Com login, baixa autenticado. */
+export async function proofBlob(proof: ApprovalProof): Promise<Blob> {
+  if (proof.dataUrl) return dataUrlToBlob(proof.dataUrl);
+  const session = auth();
+  if (session.mode !== 'supabase' || !proof.path) throw new Error('Arquivo indisponível.');
+  const response = await session.client.files(`object/authenticated/${BUCKET}/${proof.path}`);
+  if (!response.ok) throw new Error(`Não foi possível baixar o arquivo (erro ${response.status}).`);
+  return response.blob();
+}
+
 const cache = new Map<string, string>();
+/** Arquivos já baixados (a imagem do card): salvar na galeria fica instantâneo. */
+const blobs = new Map<string, Blob>();
+
+/**
+ * O arquivo, sem esperar a rede quando a imagem já apareceu na tela. No iPhone,
+ * o compartilhar só abre se for chamado logo depois do toque.
+ */
+export function cachedProofBlob(proof: ApprovalProof): Blob | undefined {
+  if (proof.dataUrl) return dataUrlToBlob(proof.dataUrl);
+  return blobs.get(proof.path);
+}
 
 /** Encontra a prova pelo id da aprovação ou do arquivo do cliente (definido pelo main). */
 let lookupProof: (approvalId: string) => ApprovalProof | undefined = () => undefined;
@@ -113,7 +134,9 @@ export async function proofUrl(proof: ApprovalProof): Promise<string> {
   if (session.mode !== 'supabase' || !proof.path) throw new Error('Arquivo indisponível.');
   const response = await session.client.files(`object/authenticated/${BUCKET}/${proof.path}`);
   if (!response.ok) throw new Error(`Não foi possível abrir o arquivo (erro ${response.status}).`);
-  const url = URL.createObjectURL(await response.blob());
+  const blob = await response.blob();
+  blobs.set(proof.path, blob);
+  const url = URL.createObjectURL(blob);
   cache.set(proof.path, url);
   return url;
 }

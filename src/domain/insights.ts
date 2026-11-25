@@ -6,6 +6,7 @@ import { addDays, type ISODate } from '../core/dates.ts';
 import { afterSalesDue } from './aftersales.ts';
 import { APPROACH_STAGE, WARMUP_STAGE } from './cadence.ts';
 import { contractState, contractsEndingSoon } from './clientcare.ts';
+import { deliveryAlerts } from './delivery.ts';
 import { siteStatsMissing } from './sitereport.ts';
 import { followStatus } from './commercial.ts';
 import { upcomingBills } from './finance.ts';
@@ -15,7 +16,7 @@ import type { AppData, ID, Opportunity } from './types.ts';
 
 // ---------------------------------------------------------------- Foco de hoje
 
-export type FocusKind = 'followup' | 'task' | 'bill' | 'delivery' | 'domain' | 'aftersales' | 'contract' | 'site';
+export type FocusKind = 'followup' | 'task' | 'bill' | 'delivery' | 'domain' | 'aftersales' | 'contract' | 'site' | 'preview' | 'payment';
 
 export interface FocusItem {
   key: string;
@@ -188,6 +189,22 @@ export function todayFocus(data: AppData, today: ISODate, options: { finance: bo
     });
   }
 
+  // Prévia sem resposta há 3 dias ou mais e pagamento final a cobrar antes de publicar.
+  for (const alert of deliveryAlerts(data, today)) {
+    if (alert.kind === 'payment' && !options.finance) continue;
+    const who = alert.client?.company ?? alert.project.name;
+    items.push({
+      key: `${alert.kind === 'preview' ? 'v' : 'f'}:${alert.project.id}`,
+      kind: alert.kind,
+      title: alert.kind === 'preview' ? `${who} está sem responder a prévia` : `Cobrar o pagamento final de ${who}`,
+      subtitle: alert.kind === 'preview' ? `Prévia enviada há ${alert.days} dias · mandar a mensagem "Cliente sumiu"` : 'Prévia aprovada · publicar só depois do pagamento',
+      date: today,
+      overdue: false,
+      href: `#/projetos/${alert.project.id}`,
+      ownerIds: alert.project.ownerIds,
+    });
+  }
+
   // Pós-venda: o próximo contato combinado de cada cliente já entregue.
   for (const { client, point } of afterSalesDue(data, today, today)) {
     items.push({
@@ -203,8 +220,18 @@ export function todayFocus(data: AppData, today: ISODate, options: { finance: bo
     });
   }
 
-  const weight: Record<FocusKind, number> = { followup: 0, bill: 1, delivery: 2, task: 3, aftersales: 4, contract: 5, site: 6, domain: 7 };
+  const weight: Record<FocusKind, number> = { followup: 0, payment: 1, bill: 1, preview: 2, delivery: 2, task: 3, aftersales: 4, contract: 5, site: 6, domain: 7 };
   return items.sort((a, b) => a.date.localeCompare(b.date) || weight[a.kind] - weight[b.kind] || a.title.localeCompare(b.title));
+}
+
+// ---------------------------------------------------------------- Avisos (sininho)
+
+/**
+ * Avisos de cada pessoa: tudo que venceu ou vence hoje e é dela (ou da
+ * agência toda, quando não tem responsável).
+ */
+export function notificationsFor(data: AppData, today: ISODate, userId: ID, options: { finance: boolean }): FocusItem[] {
+  return todayFocus(data, today, { finance: options.finance, daysAhead: 0 }).filter((i) => i.date <= today && (!i.ownerIds.length || i.ownerIds.includes(userId)));
 }
 
 // ---------------------------------------------------------------- Funil de vendas

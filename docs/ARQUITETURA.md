@@ -112,6 +112,23 @@ Se a operação lançar erro, nada é alterado e o erro aparece como aviso.
 - `data/store.ts`: em conflito de versão, recarrega e refaz a mesma operação uma vez.
 - No chat a sincronização roda a cada 5 segundos; nas outras telas, a cada 20.
 
+## Áreas adicionadas na v0.9
+
+- `domain/messages.ts`: grupos e momentos das mensagens (`LibraryItem.group`, `.step`,
+  `.options`), `messageForStep`, `stepForLead` e `fillMessage`. Ajuste único
+  `2026-11-mensagens-opcoes` (`organizeMessages`): dá grupo às mensagens antigas pelo título e
+  acrescenta as mensagens que faltam (ids fixos). `views/message-picker.ts` abre a mensagem do
+  momento com as opções.
+- `domain/routine.ts`: rotina da prospecção (`AppData.prospectRoutine`, guarda 30 dias).
+- `domain/delivery.ts`: limites (`Service.includedArts` etc., `Project.limits`,
+  `Project.artsUsed`), prévia (`Project.previewSentAt`), saldo do cliente e `deliveryAlerts`,
+  que entram no `todayFocus` (tipos `preview` e `payment`). `notificationsFor` filtra os
+  avisos de cada pessoa (sininho e `#/avisos`).
+- `domain/contentbank.ts` (`AppData.contentBank`) e `views/contentbank.ts`: imagens no bucket
+  `provas`, pasta `conteudo/`, reduzidas no navegador antes do envio.
+- `domain/learnings.ts` (`AppData.learnings`) e `data/course-notes.ts` (anotações do curso,
+  ids fixos `apr_ds_*`, importadas por botão).
+
 ## Permissões
 
 `domain/permissions.ts` define o que cada papel pode fazer (`socio`, `colaborador`).

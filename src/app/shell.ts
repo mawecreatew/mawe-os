@@ -12,6 +12,7 @@ import type { Route } from '../core/router.ts';
 import { BRAND } from '../config/brand.ts';
 import { callTodayCount } from '../domain/cadence.ts';
 import { contractsEndingSoon, inOnboarding } from '../domain/clientcare.ts';
+import { notificationsFor } from '../domain/insights.ts';
 import { upcomingBills } from '../domain/finance.ts';
 import { overdueTasks } from '../domain/selectors.ts';
 import { teamMembers } from '../domain/people.ts';
@@ -45,8 +46,21 @@ interface NavGroup {
 const at = (section: string, first?: string) => (route: Route) => route.section === section && (first === undefined || route.params[0] === first);
 const atSection = (...sections: string[]) => (route: Route) => sections.includes(route.section);
 
+/** Quantos avisos a pessoa tem hoje (o número do sininho). */
+export function notificationCount(): number {
+  const { data, currentUser } = store();
+  return notificationsFor(data, today(), currentUser.id, { finance: allowed('finance:view') }).length;
+}
+
+/** Sininho do topo no celular (o menu lateral tem o item Avisos). */
+export function renderBell(): SafeHtml {
+  const count = notificationCount();
+  return html`${icon('bell', 20)}${count ? html`<span class="topbar__count">${count > 99 ? '99+' : String(count)}</span>` : ''}<span class="visually-hidden">${count ? `${count} avisos` : 'Avisos'}</span>`;
+}
+
 const QUICK: NavLink[] = [
   { href: '#/painel', label: 'Início', icon: 'home', match: atSection('painel') },
+  { href: '#/avisos', label: 'Avisos', icon: 'bell', match: atSection('avisos'), count: notificationCount, countTone: 'alert' },
   { href: '#/planejamento', label: 'Planejamento da agência', icon: 'target', match: atSection('planejamento') },
   { href: '#/notas', label: 'Bloco de notas', icon: 'edit', match: atSection('notas') },
   { href: '#/tarefas', label: 'Tarefas', icon: 'tasks', match: atSection('tarefas'), count: () => overdueTasks(store().data, today()).length, countTone: 'alert' },
@@ -91,6 +105,7 @@ const GROUPS: NavGroup[] = [
     icon: 'megaphone',
     items: [
       { href: '#/marketing', label: 'Instagram da Mawe', icon: 'image', match: atSection('marketing') },
+      { href: '#/conteudo', label: 'Banco de conteúdo', icon: 'folder', match: atSection('conteudo') },
       { href: '#/calendario', label: 'Calendário de conteúdo', icon: 'calendar', match: atSection('calendario') },
       { href: '#/trafego', label: 'Tráfego pago', icon: 'megaphone', match: atSection('trafego') },
     ],
@@ -115,6 +130,7 @@ const GROUPS: NavGroup[] = [
     icon: 'route',
     items: [
       { href: '#/processos', label: 'Processos', icon: 'route', match: atSection('processos') },
+      { href: '#/aprendizados', label: 'Aprendizados', icon: 'book', match: atSection('aprendizados') },
       { href: '#/treinamento', label: 'Treinamento', icon: 'check', match: atSection('treinamento') },
       { href: '#/kit', label: 'Kit da agência', icon: 'folder', match: atSection('kit') },
     ],

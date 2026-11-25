@@ -2,17 +2,21 @@
  * Prospecção › Quem chamar hoje: a lista de quem precisa de mensagem hoje,
  * com os botões da cadência (Mandei, Respondeu, Sem resposta...).
  */
-import { registerActions } from '../core/events.ts';
+import { registerActions, registerForms } from '../core/events.ts';
 import { pluralize } from '../core/format.ts';
 import { cx, html, type SafeHtml } from '../core/html.ts';
 import { CALL_GROUPS, TALKING_STAGE, callToday, markNoReply, markReplied, markSent, readyToApproach, retryLead, startWarmup, type CallItem } from '../domain/cadence.ts';
-import { commercialMetrics, whatsappLink } from '../domain/commercial.ts';
+import { attemptsWithoutReply, commercialMetrics, whatsappLink } from '../domain/commercial.ts';
+import { stepForLead } from '../domain/messages.ts';
+import { routineDone, routineOf, saveRoutine, toggleRoutineTask } from '../domain/routine.ts';
 import { LOST_STAGE, WON_STAGE, stageLabel, stageTone } from '../domain/labels.ts';
 import { moveOpportunity } from '../domain/operations.ts';
 import { allowed, rerender, requirePermission, store, today } from '../app/context.ts';
 import { avatarStack, badge, button, emptyState, externalLink } from '../ui/components.ts';
 import { icon } from '../ui/icons.ts';
-import { toast } from '../ui/overlay.ts';
+import { formActions, textareaField } from '../ui/forms.ts';
+import { closeModal, openModal, toast } from '../ui/overlay.ts';
+import { openMessagePicker } from './message-picker.ts';
 
 const ui = { owner: 'todos' };
 
@@ -30,21 +34,29 @@ function contactLinks(item: CallItem): SafeHtml {
   return html`${wa ? externalLink(wa, 'WhatsApp') : ''}${ig ? externalLink(ig, 'Instagram') : ''}`;
 }
 
+function messageButton(item: CallItem): SafeHtml {
+  if (item.opp.stage === TALKING_STAGE || item.group === 'outros' || item.group === 'aquecendo') return html``;
+  return button({ label: 'Mensagem', action: 'call:message', size: 'sm', icon: 'message', data: { id: item.opp.id } });
+}
+
 function actions(item: CallItem): SafeHtml {
-  if (!allowed('commercial:edit')) return html``;
+  if (!allowed('commercial:edit')) return messageButton(item);
   const id = item.opp.id;
   switch (item.group) {
     case 'primeira':
       return html`
+        ${messageButton(item)}
         ${button({ label: 'Mandei', action: 'call:sent', variant: 'primary', size: 'sm', icon: 'send', data: { id } })}
         ${item.opp.stage !== 'aquecimento' && item.opp.contact.instagram ? button({ label: 'Aquecer antes', action: 'call:warm', size: 'sm', data: { id } }) : ''}`;
     case 'followup':
       return html`
+        ${messageButton(item)}
         ${button({ label: item.opp.stage === TALKING_STAGE ? 'Mandei mensagem' : 'Mandei follow-up', action: 'call:sent', variant: 'primary', size: 'sm', icon: 'send', data: { id } })}
         ${item.opp.stage !== TALKING_STAGE ? button({ label: 'Respondeu', action: 'call:replied', size: 'sm', icon: 'chat', data: { id } }) : button({ label: 'Fechou!', action: 'call:won', size: 'sm', icon: 'check', data: { id } })}
         ${button({ label: 'Sem resposta', action: 'call:later', variant: 'ghost', size: 'sm', data: { id } })}`;
     case 'tentar':
       return html`
+        ${messageButton(item)}
         ${button({ label: 'Tentar de novo', action: 'call:retry', variant: 'primary', size: 'sm', icon: 'repeat', data: { id } })}
         ${button({ label: 'Não rolou', action: 'call:lost', variant: 'ghost', size: 'sm', data: { id } })}`;
     case 'aquecendo':
@@ -67,6 +79,59 @@ function row(item: CallItem): SafeHtml {
     <div class="call-row__actions">${actions(item)}${avatarStack(data, o.ownerIds)}</div>
   </li>`;
 }
+
+function renderRoutine(): SafeHtml {
+  const { data } = store();
+  const t = today();
+  const routine = routineOf(data);
+  const done = routineDone(data, t);
+  const edit = allowed('commercial:edit');
+  return html`<section class="routine">
+    <div class="routine__tasks">
+      <header class="routine__head">
+        <h2>Rotina de hoje <span class="${cx('panel__count', done.length === routine.tasks.length && routine.tasks.length && 'is-done')}">${done.length} de ${routine.tasks.length}</span></h2>
+        ${edit ? button({ label: 'Editar rotina', action: 'routine:edit', variant: 'ghost', size: 'sm', icon: 'edit' }) : ''}
+      </header>
+      ${routine.tasks.length
+        ? html`<ul class="checklist routine__list">${routine.tasks.map(
+            (task) => html`<li class="${cx('checklist__item', done.includes(task.id) && 'is-done')}">
+              <label><input type="checkbox" class="check" ${done.includes(task.id) ? 'checked' : ''} ${edit ? '' : 'disabled'} data-change="routine:toggle" data-id="${task.id}" /><span>${task.text}</span></label>
+            </li>`,
+          )}</ul>`
+        : html`<p class="muted small">Sem tarefas na rotina. Use Editar rotina para criar.</p>`}
+      <p class="muted small">As caixinhas zeram sozinhas no dia seguinte.</p>
+    </div>
+    <div class="routine__criteria">
+      <h2>Quem chamar primeiro</h2>
+      ${routine.criteria.length
+        ? html`<ul class="routine__bullets">${routine.criteria.map((c) => html`<li>${c}</li>`)}</ul>`
+        : html`<p class="muted small">Sem critérios. Use Editar rotina para anotar o que faz um lead ser quente.</p>`}
+    </div>
+  </section>`;
+}
+
+function openRoutineForm(): void {
+  const routine = routineOf(store().data);
+  openModal({
+    title: 'Rotina da prospecção',
+    description: 'Um item por linha. As tarefas aparecem com caixinhas todo dia em Quem chamar hoje.',
+    size: 'lg',
+    body: html`<form class="form" data-form="routine:save">
+      ${textareaField({ name: 'tasks', label: 'Tarefas de todo dia', value: routine.tasks.map((t) => t.text).join('\n'), rows: 7 })}
+      ${textareaField({ name: 'criteria', label: 'Critérios para escolher quem chamar primeiro', value: routine.criteria.join('\n'), rows: 6 })}
+      ${formActions('Salvar rotina')}
+    </form>`,
+  });
+}
+
+registerForms({
+  'routine:save': async (_form, values) => {
+    requirePermission('commercial:edit');
+    await store().apply((d) => saveRoutine(d, values.text('tasks'), values.text('criteria')));
+    closeModal();
+    toast('Rotina salva.');
+  },
+});
 
 export function renderCallToday(): SafeHtml {
   const { data } = store();
@@ -91,6 +156,7 @@ export function renderCallToday(): SafeHtml {
       </div>
       <a class="btn btn--ghost btn--sm" href="#/comercial/funil">${icon('kanban', 15)} Ver o funil completo</a>
     </div>
+    ${renderRoutine()}
     ${groups.length
       ? groups.map(
           (g) => html`<section class="call-group">
@@ -104,7 +170,7 @@ export function renderCallToday(): SafeHtml {
           text: 'Os follow-ups aparecem aqui sozinhos nos dias certos (3, 7 e 15 dias depois da primeira mensagem). Que tal cadastrar leads novos do Google Maps?',
           action: button({ label: 'Novo lead', action: 'opportunity:new', variant: 'primary', icon: 'plus' }),
         })}</div>`}
-    <p class="muted small">${icon('info', 13)} A cadência: aquecer no Instagram por 3 dias, mandar a primeira mensagem, follow-ups em 3, 7 e 15 dias. Sem resposta, o lead volta daqui a 3 meses.</p>
+    <p class="muted small">${icon('info', 13)} A cadência: aquecer no Instagram por 3 dias (dia 1 seguir e curtir, dia 2 comentar, dia 3 abordar), mandar a primeira mensagem e os follow-ups nos dias da etapa Aguardando resposta. Sem resposta, o lead volta daqui a 3 meses.</p>
   `;
 }
 
@@ -115,6 +181,16 @@ async function run(fn: Parameters<ReturnType<typeof store>['apply']>[0], message
 }
 
 registerActions({
+  'routine:toggle': async (el) => {
+    requirePermission('commercial:edit');
+    await store().apply((d) => toggleRoutineTask(d, el.dataset.id!, today()));
+  },
+  'routine:edit': () => openRoutineForm(),
+  'call:message': (el) => {
+    const opp = store().data.opportunities.find((o) => o.id === el.dataset.id);
+    if (!opp) return;
+    openMessagePicker(stepForLead({ stage: opp.stage, attempts: attemptsWithoutReply(opp) }), { company: opp.company, contact: opp.contactName, phone: opp.contact.phone });
+  },
   'call:owner': (el) => {
     ui.owner = el.dataset.value!;
     rerender();
