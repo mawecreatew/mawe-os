@@ -343,8 +343,22 @@ export interface Project {
   publishedAt?: ISODate | null;
   /** Horas trabalhadas no projeto. */
   timeLogs?: TimeLog[];
+  /** Limites combinados com o cliente. Sem isso, vale o do serviço do catálogo. */
+  limits?: ProjectLimits | null;
+  /** Quantas artes já foram entregues neste projeto. */
+  artsUsed?: number;
+  /** Dia em que a prévia foi enviada ao cliente (espera a resposta dele). */
+  previewSentAt?: ISODate | null;
   createdAt: Timestamp;
   isDemo?: boolean;
+}
+
+/** Quantas artes e rodadas de ajuste entram no projeto, e quanto custa o extra. */
+export interface ProjectLimits {
+  arts: number | null;
+  revisions: number;
+  extraArtPrice: number | null;
+  extraRevisionPrice: number | null;
 }
 
 export interface TimeLog {
@@ -487,6 +501,14 @@ export interface Service {
   promoLabel?: string;
   /** Pacote: serviços do catálogo que vêm juntos. */
   packageItems?: ID[];
+  /** Quantas artes entram no serviço (`null` = o serviço não tem artes). */
+  includedArts?: number | null;
+  /** Quantas rodadas de ajuste entram no serviço (`null` = usa o padrão, 2). */
+  includedRevisions?: number | null;
+  /** Preço de cada arte além das incluídas. */
+  extraArtPrice?: number | null;
+  /** Preço de cada rodada de ajuste além das incluídas. */
+  extraRevisionPrice?: number | null;
   isDemo?: boolean;
 }
 
@@ -606,12 +628,36 @@ export interface Task {
 
 export type LibraryCategory = 'mensagem' | 'proposta' | 'checklist' | 'processo';
 
+/** Grupo das mensagens prontas (filtro dentro de Mensagens). */
+export type MessageGroup = 'situacao' | 'followup' | 'objecoes' | 'precificacao';
+
+/**
+ * Momento em que o sistema sugere a mensagem sozinho (ex.: no "Quem chamar
+ * hoje" ou no projeto). Vazio = só aparece na lista.
+ */
+export type MessageStep =
+  | 'abordagem'
+  | 'followup_1'
+  | 'followup_2'
+  | 'followup_3'
+  | 'encerramento'
+  | 'tentar'
+  | 'previa_sumiu'
+  | 'pagamento_final'
+  | 'extra'
+  | 'depoimento';
+
 export interface LibraryItem {
   id: ID;
   category: LibraryCategory;
   title: string;
   summary: string;
+  /** Texto da Opção 1. */
   content: string;
+  /** Opções 2 e 3 (outras versões do mesmo texto, para escolher o tom). */
+  options?: string[];
+  group?: MessageGroup | null;
+  step?: MessageStep | null;
   authorId: ID;
   updatedAt: Timestamp;
   isDemo?: boolean;
@@ -829,6 +875,55 @@ export interface MoneySplit {
 /** Progresso de cada pessoa nos processos (treinamento). */
 export type TrainingProgress = Record<ID, Record<ID, { readAt: Timestamp | null; soloAt: Timestamp | null }>>;
 
+// ---------------------------------------------------------------- Rotina de prospecção
+
+/** Tarefas que se repetem todo dia na prospecção e os critérios de um bom lead. */
+export interface ProspectRoutine {
+  tasks: Array<{ id: ID; text: string }>;
+  criteria: string[];
+  /** Dia → tarefas feitas naquele dia. Guarda só os últimos 30 dias. */
+  done: Record<ISODate, ID[]>;
+}
+
+// ---------------------------------------------------------------- Banco de conteúdo
+
+export type ContentBankKind = 'story' | 'legenda' | 'arte' | 'foto';
+
+/** Texto, arte ou foto pronta para postar no Instagram da Mawe. */
+export interface ContentBankItem {
+  id: ID;
+  kind: ContentBankKind;
+  /** Tema (Agência, Bastidores, Dica, Portfólio...). */
+  theme: string;
+  title: string;
+  /** Texto do story ou da legenda (nas imagens, a legenda sugerida). */
+  text: string;
+  /** Imagem guardada (artes e fotos). */
+  file: StoredFile | null;
+  /** Última vez que foi postado. */
+  usedAt: ISODate | null;
+  authorId: ID;
+  createdAt: Timestamp;
+}
+
+// ---------------------------------------------------------------- Aprendizados
+
+/** Um aprendizado de curso (ou da prática), organizado por tema. */
+export interface Learning {
+  id: ID;
+  theme: string;
+  title: string;
+  text: string;
+  /** Como colocar em prática na agência. */
+  howToApply: string;
+  /** De onde veio (curso, aula, livro...). */
+  source: string;
+  /** Dia em que foi colocado em prática. */
+  appliedAt: ISODate | null;
+  authorId: ID;
+  createdAt: Timestamp;
+}
+
 // ---------------------------------------------------------------- Agentes
 
 export type AgentId = 'coordenador' | 'comercial' | 'organizacao' | 'tecnico';
@@ -898,6 +993,12 @@ export interface AppData {
   timers?: Record<ID, { projectId: ID; startedAt: Timestamp }>;
   /** Perguntas do briefing (editáveis). */
   briefingQuestions?: Array<{ id: ID; text: string }>;
+  /** Tarefas diárias e critérios da prospecção. */
+  prospectRoutine?: ProspectRoutine;
+  /** Stories, legendas, artes e fotos prontas para postar. */
+  contentBank?: ContentBankItem[];
+  /** Aprendizados dos cursos, por tema. */
+  learnings?: Learning[];
   meta: {
     /** `demo` = dados fictícios carregados; `empty` = base limpa para uso real local. */
     dataset: 'demo' | 'empty';

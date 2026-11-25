@@ -641,7 +641,7 @@ export function removeDecision(draft: AppData, id: ID): void {
 
 // ---------------------------------------------------------------- Biblioteca
 
-export type LibraryInput = Pick<LibraryItem, 'category' | 'title' | 'summary' | 'content'>;
+export type LibraryInput = Pick<LibraryItem, 'category' | 'title' | 'summary' | 'content'> & Partial<Pick<LibraryItem, 'options' | 'group' | 'step'>>;
 
 export function saveLibraryItem(draft: AppData, id: ID | null, input: LibraryInput, ctx: ActionContext): LibraryItem {
   if (id) {

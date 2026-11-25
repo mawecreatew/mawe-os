@@ -20,6 +20,7 @@ import { FINAL_STAGES } from '../domain/labels.ts';
 import { activeProjects, greeting, overdueTasks, pendingTasks } from '../domain/selectors.ts';
 import { allowed, store, today } from '../app/context.ts';
 import type { View } from '../app/view.ts';
+import { renderLearningOfTheDay } from './learnings.ts';
 import { avatarStack, button, emptyState, panel } from '../ui/components.ts';
 import { icon, type IconName } from '../ui/icons.ts';
 import { renderAlignment, renderPriorities } from './day.ts';
@@ -78,7 +79,7 @@ function renderArches(): SafeHtml {
 
 // ---------------------------------------------------------------- Pra fazer hoje
 
-const FOCUS_META: Record<FocusKind, { icon: IconName; label: string }> = {
+export const FOCUS_META: Record<FocusKind, { icon: IconName; label: string }> = {
   followup: { icon: 'commercial', label: 'Comercial' },
   task: { icon: 'tasks', label: 'Tarefa' },
   bill: { icon: 'wallet', label: 'Financeiro' },
@@ -87,9 +88,11 @@ const FOCUS_META: Record<FocusKind, { icon: IconName; label: string }> = {
   aftersales: { icon: 'chat', label: 'Pós-venda' },
   contract: { icon: 'repeat', label: 'Contrato' },
   site: { icon: 'globe', label: 'Relatório do site' },
+  preview: { icon: 'clock', label: 'Prévia' },
+  payment: { icon: 'wallet', label: 'Pagamento' },
 };
 
-function focusRow(item: FocusItem, t: string): SafeHtml {
+export function focusRow(item: FocusItem, t: string): SafeHtml {
   const { data } = store();
   const meta = FOCUS_META[item.kind];
   const [, m, d] = item.date.split('-');
@@ -205,7 +208,7 @@ export const dashboardView: View = {
 
       <div class="central-grid">
         <div class="central-grid__main">${renderTodo()}</div>
-        <aside class="central-grid__side">${renderNumbers()}</aside>
+        <aside class="central-grid__side">${renderNumbers()}${renderLearningOfTheDay()}</aside>
       </div>
 
       ${renderAlignment()}

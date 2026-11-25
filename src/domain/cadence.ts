@@ -106,7 +106,10 @@ export const CALL_GROUPS: Array<{ id: CallGroup; title: string; hint: string }> 
   { id: 'outros', title: 'Outros lembretes', hint: 'Lembretes das outras etapas do funil.' },
 ];
 
-function warmupDay(opp: Opportunity, today: ISODate): number {
+/** O que fazer em cada dia do aquecimento no Instagram. */
+export const WARMUP_PLAN = ['aquecer: seguir e curtir 2 posts', 'engajar: comentar um post ou responder um story', 'abordar: mais uma curtida e a primeira mensagem'];
+
+export function warmupDay(opp: Opportunity, today: ISODate): number {
   if (!opp.followUpDate) return 1;
   const left = Math.round((Date.parse(opp.followUpDate) - Date.parse(today)) / 86_400_000);
   return Math.min(WARMUP_DAYS, Math.max(1, WARMUP_DAYS - left));
@@ -121,7 +124,10 @@ export function callToday(data: AppData, today: ISODate, ownerId?: ID): CallItem
     const status = followStatus(data, opp, today);
     if (opp.stage === WARMUP_STAGE) {
       if (opp.followUpDate && opp.followUpDate <= today) items.push({ opp, group: 'primeira', status, what: 'Aquecimento concluído' });
-      else items.push({ opp, group: 'aquecendo', status, what: `Dia ${warmupDay(opp, today)} de ${WARMUP_DAYS}` });
+      else {
+        const day = warmupDay(opp, today);
+        items.push({ opp, group: 'aquecendo', status, what: `Dia ${day} de ${WARMUP_DAYS} · ${WARMUP_PLAN[day - 1] ?? 'aquecer'}` });
+      }
       continue;
     }
     if (opp.stage === APPROACH_STAGE) {

@@ -7,7 +7,9 @@
  */
 import { formatLongDate, type ISODate } from '../core/dates.ts';
 import { formatCurrency } from '../core/format.ts';
+import { INCLUDED_REVISIONS } from './approvals.ts';
 import { agencyOf } from './daily.ts';
+import { limitsText, serviceLimits } from './delivery.ts';
 import { orderedProcesses } from './processes.ts';
 import { proposalRecipient, proposalTotals, serviceIncludes } from './business.ts';
 import type { AppData, Project, Proposal } from './types.ts';
@@ -59,6 +61,18 @@ const DOMAIN_TEXT =
 
 // ---------------------------------------------------------------- Proposta
 
+/** Rodadas de ajuste combinadas na proposta e o preço da rodada extra (dos serviços escolhidos). */
+function proposalRevisions(data: AppData, p: Proposal): { rounds: number; extraPrice: number | null } {
+  const services = p.items.map((i) => data.services.find((s) => s.id === i.serviceId)).filter((s): s is NonNullable<typeof s> => Boolean(s));
+  const set = services.map((s) => s.includedRevisions).filter((n): n is number => typeof n === 'number');
+  const extra = services.map((s) => s.extraRevisionPrice).find((n): n is number => typeof n === 'number') ?? null;
+  return { rounds: set.length ? Math.max(...set) : INCLUDED_REVISIONS, extraPrice: extra };
+}
+
+function roundsText(n: number): string {
+  return n === 1 ? '1 rodada' : `${n} rodadas`;
+}
+
 export function proposalDocument(data: AppData, p: Proposal, today: ISODate): AgencyDocument {
   const agency = agencyOf(data);
   const to = proposalRecipient(data, p);
@@ -72,8 +86,10 @@ export function proposalDocument(data: AppData, p: Proposal, today: ISODate): Ag
   for (const item of p.items) {
     const service = item.serviceId ? data.services.find((s) => s.id === item.serviceId) : undefined;
     const includes = service ? serviceIncludes(service) : [];
+    // Artes incluídas e preço da arte extra (as rodadas de ajuste vão em "O que está incluso").
+    const extras = service ? limitsText(serviceLimits(service)).filter((l) => !/rodada/i.test(l)) : [];
     blocks.push({ t: 'paragraph', text: `${item.quantity > 1 ? `${item.quantity} × ` : ''}${item.name}` });
-    if (includes.length) blocks.push({ t: 'list', items: includes });
+    if (includes.length || extras.length) blocks.push({ t: 'list', items: [...includes, ...extras] });
   }
   if (p.contract?.scope) blocks.push({ t: 'paragraph', text: `Seções ou páginas previstas: ${p.contract.scope}.` });
   blocks.push(
@@ -95,7 +111,7 @@ export function proposalDocument(data: AppData, p: Proposal, today: ISODate): Ag
   }
   blocks.push(
     { t: 'heading', text: 'O que está incluso' },
-    { t: 'list', items: ['Design sob medida a partir da identidade do seu negócio', 'Versão pensada para o celular', 'Botão de WhatsApp com mensagem pronta', 'Até 2 rodadas de alterações sobre a prévia', 'Publicação do site e orientação sobre o domínio', 'Manual do site em PDF na entrega'] },
+    { t: 'list', items: ['Design sob medida a partir da identidade do seu negócio', 'Versão pensada para o celular', 'Botão de WhatsApp com mensagem pronta', `Até ${roundsText(proposalRevisions(data, p).rounds)} de alterações sobre a prévia${proposalRevisions(data, p).extraPrice !== null ? ` (rodada extra: ${money(proposalRevisions(data, p).extraPrice!)})` : ''}`, 'Publicação do site e orientação sobre o domínio', 'Manual do site em PDF na entrega'] },
     { t: 'heading', text: 'Sobre o domínio' },
     { t: 'paragraph', text: DOMAIN_TEXT },
   );
@@ -144,6 +160,7 @@ export function contractDocument(data: AppData, p: Proposal, today: ISODate): Ag
   const services = p.items.map((i) => `${i.quantity > 1 ? `${i.quantity} × ` : ''}${i.name}`).join(', ');
   const days = c?.deliveryDays ?? Math.max(0, ...p.items.map((i) => data.services.find((s) => s.id === i.serviceId)?.deliveryDays ?? 0));
   const blank = '________________';
+  const revisions = proposalRevisions(data, p);
   const clauses: Array<[string, string]> = [
     ['1. Objeto', `A CONTRATADA vai prestar à CONTRATANTE os seguintes serviços: ${services}.${c?.scope ? ` O site terá: ${c.scope}.` : ''}`],
     [
@@ -154,7 +171,10 @@ export function contractDocument(data: AppData, p: Proposal, today: ISODate): Ag
       '3. Valor e pagamento',
       `${totals.oneTime ? `O valor total é de ${money(totals.oneTime)}. ` : ''}${totals.monthly ? `A mensalidade é de ${money(totals.monthly)}. ` : ''}${paymentText(data, p)} O site só é publicado depois que o valor total estiver pago.`,
     ],
-    ['4. Alterações', 'Estão incluídas até 2 rodadas de alterações sobre a prévia. Cada rodada deve reunir todos os ajustes em uma única mensagem. Alterações além disso, ou mudanças no que foi combinado, serão orçadas à parte.'],
+    [
+      '4. Alterações',
+      `Estão incluídas até ${roundsText(revisions.rounds)} de alterações sobre a prévia. Cada rodada deve reunir todos os ajustes em uma única mensagem. Alterações além disso, ou mudanças no que foi combinado, serão orçadas à parte${revisions.extraPrice !== null ? ` (cada rodada extra custa ${money(revisions.extraPrice)})` : ''}.`,
+    ],
     ['5. Aprovação', 'A aprovação da prévia e da entrega pode ser feita por escrito no WhatsApp, no Instagram ou por e-mail, e vale como aceite.'],
     ['6. Domínio e hospedagem', `O domínio é registrado em nome da CONTRATANTE, que paga a taxa anual direto ao Registro.br. A CONTRATADA orienta o registro e faz a publicação. ${a.hostingNote}`],
     ['7. Manutenção', 'A manutenção mensal não está incluída, a não ser que esteja listada no objeto deste contrato. Planos de manutenção são contratados à parte e podem ser cancelados com aviso de 30 dias.'],

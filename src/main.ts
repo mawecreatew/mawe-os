@@ -13,7 +13,7 @@ import { showBlockingMessage, showLogin } from './app/login.ts';
 import { AuthRequiredError, SupabaseClient } from './integrations/supabase/client.ts';
 import { loadSupabaseConfig } from './integrations/supabase/config.ts';
 import { SupabaseDataSource } from './integrations/supabase/data-source.ts';
-import { renderPrototypeBanner, renderSidebar } from './app/shell.ts';
+import { renderBell, renderPrototypeBanner, renderSidebar } from './app/shell.ts';
 import type { View } from './app/view.ts';
 import { emptyState, pageHeader } from './ui/components.ts';
 import { toast } from './ui/overlay.ts';
@@ -36,12 +36,16 @@ import { processesView } from './views/processes.ts';
 import { installProofLoader, setProofLookup } from './app/proofs.ts';
 import { applySavedTheme } from './app/theme.ts';
 import { findClientFile } from './domain/clientcare.ts';
+import { findContentFile } from './domain/contentbank.ts';
 import { adminView } from './views/admin.ts';
 import { chatView } from './views/chat.ts';
 import { contractsView } from './views/contracts.ts';
 import { kitView } from './views/kit.ts';
 import { marketingView } from './views/marketing.ts';
 import { notesView } from './views/notes.ts';
+import { notificationsView } from './views/notifications.ts';
+import { contentBankView } from './views/contentbank.ts';
+import { learningsView } from './views/learnings.ts';
 import { onboardingView } from './views/onboarding.ts';
 import { planningView } from './views/planning.ts';
 import { reportView } from './views/report.ts';
@@ -76,6 +80,9 @@ const ROUTES: Record<string, View> = {
   treinamento: trainingView,
   kit: kitView,
   sites: sitesView,
+  avisos: notificationsView,
+  conteudo: contentBankView,
+  aprendizados: learningsView,
 };
 
 const notFoundView: View = {
@@ -116,6 +123,7 @@ function render(): void {
 
   el('sidebar').innerHTML = renderSidebar(route).value;
   el('banner').innerHTML = renderPrototypeBanner().value;
+  el('topbar-bell').innerHTML = renderBell().value;
   try {
     el('view').innerHTML = view.render(route).value;
     document.title = `${view.title(route)} · Central MaweCreate`;
@@ -237,7 +245,7 @@ async function start(): Promise<void> {
     return;
   }
   setStore(store);
-  setProofLookup((id) => (store.data.approvals ?? []).find((a) => a.id === id)?.proof ?? findClientFile(store.data, id) ?? undefined);
+  setProofLookup((id) => (store.data.approvals ?? []).find((a) => a.id === id)?.proof ?? findClientFile(store.data, id) ?? findContentFile(store.data, id) ?? undefined);
   installProofLoader();
   if (access.lockedUserId) startSync(store);
 

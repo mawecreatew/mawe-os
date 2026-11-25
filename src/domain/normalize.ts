@@ -8,7 +8,9 @@ import { fillCategories } from './categories.ts';
 import { migrateToCadence } from './cadence.ts';
 import { fillStageKinds, stageKind } from './commercial.ts';
 import { DEFAULT_PIPELINE_STAGES, FINAL_STAGES, LOST_STAGE, WON_STAGE } from './labels.ts';
+import { organizeMessages } from './messages.ts';
 import { starterProcesses } from './processes.ts';
+import { STARTER_ROUTINE } from './routine.ts';
 import { STARTER_SERVICES } from './templates.ts';
 import type { AppData, LibraryItem, PipelineStage, Service } from './types.ts';
 
@@ -62,6 +64,9 @@ export function fillDefaults(data: AppData): AppData {
     if (p.serviceId === undefined) p.serviceId = null;
     if (p.publishedAt === undefined) p.publishedAt = null;
     if (!Array.isArray(p.timeLogs)) p.timeLogs = [];
+    if (p.limits === undefined) p.limits = null;
+    if (typeof p.artsUsed !== 'number') p.artsUsed = 0;
+    if (p.previewSentAt === undefined) p.previewSentAt = null;
   }
   if (!d.finance || typeof d.finance !== 'object') d.finance = { entries: [], recurring: [] };
   if (!Array.isArray(d.finance.entries)) d.finance.entries = [];
@@ -86,6 +91,11 @@ export function fillDefaults(data: AppData): AppData {
   if (!d.training || typeof d.training !== 'object') d.training = {};
   if (!d.timers || typeof d.timers !== 'object') d.timers = {};
   if (!Array.isArray(d.briefingQuestions)) d.briefingQuestions = [];
+  if (!d.prospectRoutine || !Array.isArray(d.prospectRoutine.tasks)) d.prospectRoutine = structuredClone(STARTER_ROUTINE);
+  if (!Array.isArray(d.prospectRoutine.criteria)) d.prospectRoutine.criteria = [];
+  if (!d.prospectRoutine.done || typeof d.prospectRoutine.done !== 'object') d.prospectRoutine.done = {};
+  if (!Array.isArray(d.contentBank)) d.contentBank = [];
+  if (!Array.isArray(d.learnings)) d.learnings = [];
   if (!d.goals || typeof d.goals !== 'object') d.goals = {};
   for (const s of d.services) if (!Array.isArray(s.packageItems)) s.packageItems = [];
   fillCategories(d);
@@ -178,6 +188,12 @@ const MIGRATIONS: Array<{ id: string; run: (d: AppData) => void }> = [
         if (!d.library.some((l) => l.id === item.id)) d.library.push({ ...item, authorId: author, updatedAt: '2026-11-23T12:00:00.000Z', ...(d.meta.dataset === 'demo' ? { isDemo: true } : {}) });
       }
     },
+  },
+  {
+    // Mensagens com opções: grupos (situação, follow-up, objeções, precificação),
+    // momento de cada uma e as mensagens novas (follow-ups, prévia, pagamento final...).
+    id: '2026-11-mensagens-opcoes',
+    run: (d) => organizeMessages(d),
   },
 ];
 

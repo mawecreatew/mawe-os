@@ -4,7 +4,7 @@ Escritório digital privado da **Mawe Create**: operação diária, prospecção
 projetos, tarefas, marketing e gestão, compartilhado por Maria Eduarda e Wesley. Nas telas o
 sistema se chama **Central** (o repositório continua `mawe-os`).
 
-> **Status: v0.8.** Funciona de verdade no navegador. Tem dois modos:
+> **Status: v0.9.** Funciona de verdade no navegador. Tem dois modos:
 > - **Protótipo local** (padrão): sem login, com dados **fictícios** salvos só neste navegador.
 > - **Com login (Supabase)**: cada sócio entra com sua conta e os dois veem os mesmos dados.
 >   Para ativar, siga [`docs/SUPABASE.md`](docs/SUPABASE.md).
@@ -41,6 +41,34 @@ O teste de navegação usa o Playwright. Se for a primeira vez na sua máquina, 
 `npx playwright install chromium`.
 
 ## O que já funciona
+
+### Novidades da v0.9 (plano de melhorias da Central)
+
+- **Mensagens prontas com opções**: cada mensagem tem até 3 versões (Opção 1, 2 e 3) dentro
+  do mesmo card, texto resumido com **Ler mais**, botão Copiar da opção aberta, busca e grupos
+  (Por situação, Follow-up, Objeções, Precificação). Cada mensagem pode ter um **momento**
+  (primeira mensagem, 1º/2º/3º follow-up, encerramento, cliente sumiu depois da prévia,
+  pagamento final, extra, depoimento) e o sistema sugere a mensagem certa sozinho. As mensagens
+  antigas ganharam grupo pelo título (o texto não muda) e entraram as que faltavam.
+- **Prospecção**: o aquecimento mostra o que fazer em cada dia (dia 1 aquecer, dia 2 engajar,
+  dia 3 abordar); botão **Mensagem** em cada lead abre a mensagem do dia com o nome já
+  preenchido, Copiar e Abrir no WhatsApp; **Rotina de hoje** com caixinhas que zeram no dia
+  seguinte e **Quem chamar primeiro** (critérios editáveis).
+- **Entrega e pagamento** no projeto: "Enviei a prévia" conta os dias sem resposta (a partir de
+  3 dias vira aviso, com a mensagem "Cliente sumiu"), contador de **artes** e de **rodadas de
+  ajuste** com o limite do pacote, total, recebido e o que falta do cliente, e a cobrança do
+  pagamento final depois da prévia aprovada. Publicar com parcela em aberto pede confirmação.
+- **Limites do pacote** em Serviços e preços (artes incluídas, rodadas de ajuste, preço da arte e
+  da rodada extra), escritos na proposta e no contrato.
+- **Avisos**: sininho no topo (celular) e item Avisos no menu, com o que venceu ou vence hoje e é
+  de cada pessoa (ou da agência toda).
+- **Banco de conteúdo** (Marketing): stories, legendas, artes e fotos prontas. Textos com Copiar;
+  imagens com **Salvar na galeria** (no celular abre o compartilhar). Fotos grandes são
+  reduzidas antes de enviar. As imagens ficam no mesmo bucket privado `provas`, pasta `conteudo/`.
+- **Aprendizados** (Agência): anotações dos cursos por tema, com "como aplicar na agência",
+  "já coloquei em prática" e um **aprendizado do dia** no Início. O caderno do curso
+  Descomplicando Sites entra pelo botão **Importar anotações do curso**.
+- Nada mudou no Supabase: tudo fica no mesmo `workspace` e no bucket que já existe.
 
 ### Novidades da v0.8 (Central MaweCreate)
 

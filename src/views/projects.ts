@@ -25,7 +25,11 @@ import {
 } from '../domain/operations.ts';
 import { currentStage, decisionsOf, findClient, findProject, findUser, projectProgress, tasksRelatedTo } from '../domain/selectors.ts';
 import type { Project, ProjectStatus, ProjectType } from '../domain/types.ts';
-import { INCLUDED_REVISIONS, approvalsOf, revisionRounds } from '../domain/approvals.ts';
+import { approvalsOf, revisionRounds } from '../domain/approvals.ts';
+import { whatsappLink } from '../domain/commercial.ts';
+import { changeArtsUsed, clientBalance, finalPaymentPending, limitUsage, markPreviewSent, previewWaiting, projectLimits, setProjectLimits, type LimitUsage } from '../domain/delivery.ts';
+import type { ProjectLimits } from '../domain/types.ts';
+import { openMessagePicker } from './message-picker.ts';
 import { siteManualDocument } from '../domain/documents.ts';
 import { currentStageOf, processForStage } from '../domain/processes.ts';
 import { openDocument } from '../ui/document.ts';
@@ -177,6 +181,25 @@ export function openProjectForm(project?: Project, clientId?: string, chosenType
 }
 
 registerForms({
+  'project:limits': async (form, values) => {
+    requirePermission('projects:edit');
+    const whole = (name: string, what: string, empty: number | null): number | null => {
+      const text = values.text(name);
+      if (!text) return empty;
+      const n = Number(text);
+      if (!Number.isInteger(n) || n < 0) throw new Error(`Use um número inteiro em ${what}.`);
+      return n;
+    };
+    const limits: ProjectLimits = {
+      arts: whole('arts', 'artes incluídas', null),
+      revisions: whole('revisions', 'rodadas de ajuste', 0) ?? 0,
+      extraArtPrice: parseMoney(values.text('extraArtPrice')),
+      extraRevisionPrice: parseMoney(values.text('extraRevisionPrice')),
+    };
+    await store().apply((draft) => setProjectLimits(draft, form.dataset.id!, limits));
+    closeModal();
+    toast('Limites do projeto salvos.');
+  },
   'project:save': async (form, values) => {
     requirePermission('projects:edit');
     const type = (form.dataset.type || 'site') as ProjectType;
@@ -322,9 +345,63 @@ registerActions({
   'project:status': async (el) => {
     requirePermission('projects:edit');
     const status = (el as HTMLSelectElement).value as ProjectStatus;
+    const current = findProject(store().data, el.dataset.id);
+    if (status === 'publicado' && current && current.status !== 'publicado' && allowed('finance:view')) {
+      const open = clientBalance(findClient(store().data, current.clientId)).open;
+      if (open > 0) {
+        const ok = await confirmAction({
+          title: 'Ainda falta receber',
+          text: `Este cliente ainda tem ${formatCurrency(open, true)} a pagar. O combinado é publicar só depois do pagamento final. Publicar mesmo assim?`,
+          confirmLabel: 'Publicar mesmo assim',
+        });
+        if (!ok) {
+          (el as HTMLSelectElement).value = current.status;
+          return;
+        }
+      }
+    }
     await store().apply((draft) => setProjectStatus(draft, el.dataset.id!, status, today()));
     const project = findProject(store().data, el.dataset.id);
     toast(`Status alterado para "${projectStatusLabel(project?.type ?? 'site', status)}".`);
+  },
+  'project:preview-sent': async (el) => {
+    requirePermission('projects:edit');
+    await store().apply((draft) => markPreviewSent(draft, el.dataset.id!, today()));
+    toast('Prévia marcada como enviada. Se o cliente não responder em 3 dias, aparece nos avisos.');
+  },
+  'project:arts': async (el) => {
+    requirePermission('projects:edit');
+    await store().apply((draft) => changeArtsUsed(draft, el.dataset.id!, Number(el.dataset.delta)));
+  },
+  'project:limits': (el) => {
+    const project = findProject(store().data, el.dataset.id);
+    if (project) openLimitsForm(project);
+  },
+  'project:limits-reset': async (el) => {
+    requirePermission('projects:edit');
+    await store().apply((draft) => setProjectLimits(draft, el.dataset.id!, null));
+    closeModal();
+    toast('O projeto voltou a usar os limites do serviço.');
+  },
+  'project:message': (el) => {
+    const { data } = store();
+    const project = findProject(data, el.dataset.id);
+    if (!project) return;
+    const client = findClient(data, project.clientId);
+    const step = el.dataset.step as 'previa_sumiu' | 'pagamento_final' | 'extra';
+    const usage = limitUsage(data, project);
+    const amount =
+      step === 'pagamento_final'
+        ? clientBalance(client).open
+        : step === 'extra'
+          ? (usage.revisions.atLimit ? usage.revisions.extraPrice : usage.arts.extraPrice)
+          : null;
+    openMessagePicker(step, {
+      company: client?.company ?? project.name,
+      contact: client?.contactName ?? '',
+      phone: client?.contact.phone,
+      amount: amount !== null && amount > 0 ? formatCurrency(amount, true) : undefined,
+    });
   },
   'project:stage': async (el) => {
     requirePermission('projects:edit');
@@ -452,12 +529,6 @@ function renderProjectApprovals(project: Project): SafeHtml {
     count: list.length,
     action: edit ? button({ label: 'Registrar', action: 'approval:new', variant: 'ghost', icon: 'plus', size: 'sm', data: { project: project.id } }) : undefined,
     body: html`
-      ${project.type === 'site' || project.type === 'sistema'
-        ? html`<p class="${cx('revisions', rounds > INCLUDED_REVISIONS && 'is-over')}">
-            <strong>${rounds} de ${INCLUDED_REVISIONS}</strong> rodadas de alteração usadas
-            ${rounds > INCLUDED_REVISIONS ? html`<span>· as próximas são orçadas à parte</span>` : ''}
-          </p>`
-        : ''}
       ${list.length
         ? approvalList(list)
         : html`<p class="muted small">Quando o cliente aprovar a prévia ou pedir ajustes, registre aqui com o print da conversa.</p>`}
@@ -469,6 +540,107 @@ function renderProjectApprovals(project: Project): SafeHtml {
           </div>`
         : ''}
     `,
+  });
+}
+
+function usageRow(label: string, usage: LimitUsage, controls: SafeHtml): SafeHtml {
+  return html`<div class="${cx('usage', usage.over && 'is-over', !usage.over && usage.atLimit && 'is-limit')}">
+    <span class="usage__label">${label}</span>
+    <strong class="usage__value">${usage.used}${usage.included !== null ? html`<small> de ${usage.included}</small>` : ''}</strong>
+    ${usage.included !== null ? html`<span class="usage__bar">${progressBar(Math.min(100, usage.included ? (usage.used / usage.included) * 100 : 100))}</span>` : html`<span class="usage__bar muted small">sem limite combinado</span>`}
+    <span class="usage__controls">${controls}</span>
+    ${usage.atLimit && usage.included !== null
+      ? html`<span class="usage__note">${usage.over ? 'Passou do incluído.' : 'Chegou no limite.'} ${usage.extraPrice !== null ? `O próximo é extra: ${formatCurrency(usage.extraPrice, true)}.` : 'O próximo é orçado à parte.'}</span>`
+      : ''}
+  </div>`;
+}
+
+/** Prévia, limite de artes e ajustes e pagamento do cliente, num lugar só. */
+function renderDelivery(project: Project): SafeHtml {
+  const { data } = store();
+  const t = today();
+  const client = findClient(data, project.clientId);
+  const edit = allowed('projects:edit');
+  const isSite = project.type === 'site' || project.type === 'sistema';
+  const wait = previewWaiting(data, project, t);
+  const usage = limitUsage(data, project);
+  const balance = clientBalance(client);
+  const showMoney = allowed('finance:view') && balance.total > 0;
+  const payPending = finalPaymentPending(data, project);
+  const wa = whatsappLink(client?.contact.phone, '');
+  const anyAtLimit = (usage.arts.atLimit && usage.arts.included !== null) || usage.revisions.atLimit;
+
+  const preview = !isSite || project.status === 'publicado'
+    ? html``
+    : wait
+      ? html`<div class="${cx('delivery__preview', wait.alert && 'is-alert')}">
+          <p><strong>${wait.days === 0 ? 'Prévia enviada hoje' : `Sem resposta há ${wait.days} ${wait.days === 1 ? 'dia' : 'dias'}`}</strong> · prévia enviada em ${formatShortDate(wait.since)}</p>
+          <div class="quick-actions">
+            ${button({ label: 'Mensagem: cliente sumiu', action: 'project:message', icon: 'message', size: 'sm', variant: wait.alert ? 'primary' : 'secondary', data: { id: project.id, step: 'previa_sumiu' } })}
+            ${edit ? button({ label: 'Cliente aprovou', action: 'approval:new', size: 'sm', icon: 'check', data: { project: project.id, kind: 'previa' } }) : ''}
+            ${edit ? button({ label: 'Pediu alteração', action: 'approval:new', size: 'sm', data: { project: project.id, kind: 'alteracao', summary: `Rodada ${revisionRounds(data, project.id) + 1} de alterações` } }) : ''}
+          </div>
+        </div>`
+      : edit
+        ? html`<div class="delivery__preview">
+            <p class="muted small">Mandou a prévia para o cliente? Marque aqui e o sistema conta os dias sem resposta (a partir de 3 dias, avisa).</p>
+            <div class="quick-actions">${button({ label: 'Enviei a prévia', action: 'project:preview-sent', icon: 'send', size: 'sm', data: { id: project.id } })}</div>
+          </div>`
+        : html``;
+
+  return panel({
+    title: 'Entrega e pagamento',
+    icon: 'flag',
+    action: html`${wa ? html`<a class="btn btn--ghost btn--sm" href="${wa}" target="_blank" rel="noopener noreferrer">${icon('chat', 14)} Falar com o cliente</a>` : ''}`,
+    body: html`
+      ${preview}
+      <div class="delivery__usage">
+        ${usageRow(
+          'Artes entregues',
+          usage.arts,
+          edit
+            ? html`${button({ label: 'Tirar uma arte', iconOnly: true, icon: 'arrowDown', size: 'sm', variant: 'ghost', action: 'project:arts', data: { id: project.id, delta: '-1' } })}
+                ${button({ label: '+1 arte', icon: 'plus', size: 'sm', action: 'project:arts', data: { id: project.id, delta: '1' } })}`
+            : html``,
+        )}
+        ${usageRow('Rodadas de ajuste', usage.revisions, html`<span class="muted small">conta pelos pedidos de alteração</span>`)}
+      </div>
+      <div class="quick-actions">
+        ${edit ? button({ label: 'Editar limites', action: 'project:limits', icon: 'edit', size: 'sm', variant: 'ghost', data: { id: project.id } }) : ''}
+        ${anyAtLimit ? button({ label: 'Mensagem: cobrar extra', action: 'project:message', icon: 'message', size: 'sm', data: { id: project.id, step: 'extra' } }) : ''}
+      </div>
+      ${showMoney
+        ? html`<div class="${cx('delivery__money', payPending && 'is-alert')}">
+            <div><span>Total</span><strong>${formatCurrency(balance.total, true)}</strong></div>
+            <div><span>Recebido</span><strong class="text-success">${formatCurrency(balance.paid, true)}</strong></div>
+            <div><span>Falta</span><strong class="${cx(balance.open > 0 && 'text-danger')}">${formatCurrency(balance.open, true)}</strong></div>
+          </div>
+          ${payPending
+            ? html`<p class="delivery__pay">${icon('alert', 14)} Prévia aprovada: receber ${formatCurrency(balance.open, true)} antes de publicar.
+                ${button({ label: 'Mensagem: pagamento final', action: 'project:message', icon: 'message', size: 'sm', variant: 'primary', data: { id: project.id, step: 'pagamento_final' } })}</p>`
+            : ''}
+          <p class="muted small">Valores das parcelas do cliente (todas as dele, não só deste projeto). Marque como pagas na <a href="#/clientes/${project.clientId}">ficha do cliente</a> ou no Financeiro.</p>`
+        : ''}
+    `,
+  });
+}
+
+function openLimitsForm(project: Project): void {
+  const { data } = store();
+  const v = projectLimits(data, project);
+  const money = (n: number | null) => (n === null ? '' : String(n).replace('.', ','));
+  openModal({
+    title: 'Limites do projeto',
+    description: project.limits ? 'Combinado especialmente para este projeto.' : 'Hoje vale o que está no serviço do catálogo. Mude aqui só se combinou diferente com este cliente.',
+    body: html`<form class="form" data-form="project:limits" data-id="${project.id}">
+      <div class="form-grid">
+        ${textField({ name: 'arts', label: 'Artes incluídas', type: 'number', value: v.arts ?? '', placeholder: 'Sem artes' })}
+        ${textField({ name: 'revisions', label: 'Rodadas de ajuste incluídas', type: 'number', value: v.revisions, required: true })}
+        ${textField({ name: 'extraArtPrice', label: 'Arte extra (R$)', value: money(v.extraArtPrice), inputmode: 'decimal' })}
+        ${textField({ name: 'extraRevisionPrice', label: 'Rodada extra (R$)', value: money(v.extraRevisionPrice), inputmode: 'decimal' })}
+      </div>
+      ${formActions('Salvar limites', project.limits ? button({ label: 'Voltar ao do serviço', action: 'project:limits-reset', variant: 'ghost', size: 'sm', data: { id: project.id } }) : undefined)}
+    </form>`,
   });
 }
 
@@ -540,6 +712,8 @@ function renderDetail(project: Project): SafeHtml {
         })}
 
         ${renderStageGuide(project)}
+
+        ${renderDelivery(project)}
 
         ${renderProjectApprovals(project)}
 

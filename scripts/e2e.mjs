@@ -623,13 +623,89 @@ try {
 
   await step('biblioteca: abre modelo, alterna categorias e mostra decisões', async () => {
     await go('#/biblioteca');
-    await page.locator('.library-card').first().click();
-    await page.locator('dialog.modal .library-content').waitFor();
+    await page.locator('.msg-card__title').first().click();
+    await page.locator('dialog.modal .library-content').first().waitFor();
     await page.keyboard.press('Escape');
+    // Mensagens com opções: grupo Follow-up, troca de opção e "Ler mais".
+    await page.locator('.segmented__item', { hasText: 'Follow-up' }).click();
+    assert.match(await page.locator('.msg-card').first().locator('.msg-card__tags').innerText(), /Primeira mensagem/);
+    const withOptions = page.locator('.msg-card', { has: page.getByRole('tab', { name: 'Opção 2' }) }).first();
+    const title = await withOptions.locator('.msg-card__title').innerText();
+    await withOptions.getByRole('tab', { name: 'Opção 2' }).click();
+    await page.locator('.msg-card', { hasText: title }).getByRole('button', { name: 'Copiar opção 2' }).waitFor();
+    await page.locator('#library-search').fill('sumiu');
+    await page.locator('.segmented__item', { hasText: 'Todas' }).first().click();
+    await page.locator('.msg-card', { hasText: 'Cliente sumiu depois da prévia' }).waitFor();
+    assert.equal(await page.locator('.msg-card').count(), 1);
+    await page.locator('#library-search').fill('');
     await page.locator('.segmented__item', { hasText: 'Checklists' }).click();
     await page.waitForURL(/#\/biblioteca\/checklist/);
     await page.locator('.segmented__item', { hasText: 'Decisões' }).click();
     await page.locator('.decision-log__item', { hasText: 'Usar paleta neutra' }).waitFor();
+  });
+
+  await step('prospecção: rotina do dia com caixinhas e mensagem do dia com opções', async () => {
+    await go('#/comercial');
+    const routine = page.locator('.routine');
+    await routine.locator('.routine__head', { hasText: '0 de 5' }).waitFor();
+    await routine.locator('.checklist__item').first().locator('input').check();
+    await routine.locator('.routine__head', { hasText: '1 de 5' }).waitFor();
+    const row = page.locator('.call-row', { has: page.getByRole('button', { name: 'Mensagem' }) }).first();
+    await row.getByRole('button', { name: 'Mensagem' }).click();
+    await page.locator('dialog.modal .msg-pick__text').first().waitFor();
+    assert.doesNotMatch(await page.locator('dialog.modal .msg-pick__text').first().innerText(), /\{\{nome\}\}/, 'o nome do cliente entra no texto');
+    await page.keyboard.press('Escape');
+  });
+
+  await step('projeto: Enviei a prévia, limite de artes e mensagem de cliente sumido', async () => {
+    await go('#/projetos/prj_trigo');
+    const panel = page.locator('.panel', { hasText: 'Entrega e pagamento' });
+    await panel.getByRole('button', { name: 'Enviei a prévia' }).click();
+    await panel.locator('.delivery__preview', { hasText: 'Prévia enviada hoje' }).waitFor();
+    await panel.getByRole('button', { name: 'Editar limites' }).click();
+    await modal().locator('input[name=arts]').fill('1');
+    await submitModal();
+    await panel.getByRole('button', { name: '+1 arte' }).click();
+    await panel.locator('.usage.is-limit', { hasText: 'Artes entregues' }).waitFor();
+    await panel.getByRole('button', { name: 'Mensagem: cobrar extra' }).click();
+    await page.locator('dialog.modal .msg-pick__text').first().waitFor();
+    await page.keyboard.press('Escape');
+    await panel.getByRole('button', { name: 'Mensagem: cliente sumiu' }).click();
+    await page.locator('dialog.modal', { hasText: 'Cliente sumiu depois da prévia' }).waitFor();
+    await page.keyboard.press('Escape');
+  });
+
+  await step('avisos: o sininho e a lista de avisos do dia', async () => {
+    await go('#/avisos');
+    await expectTitle('Avisos');
+    const count = await page.locator('.todo').count();
+    const badge = page.locator('.sidebar .nav__item', { hasText: 'Avisos' }).locator('.nav__count');
+    if (count) assert.equal(await badge.innerText(), String(count));
+  });
+
+  await step('banco de conteúdo: guarda um story e marca como postado', async () => {
+    await go('#/conteudo');
+    await expectTitle('Banco de conteúdo');
+    await page.getByRole('button', { name: 'Novo conteúdo' }).click();
+    await modal().locator('input[name=title]').fill('Bom dia de trabalho');
+    await modal().locator('textarea[name=text]').fill('Começando o dia criando sites para negócios locais');
+    await modal().locator('input[name=theme]').fill('Bastidores');
+    await submitModal();
+    const card = page.locator('.bank-card', { hasText: 'Bom dia de trabalho' });
+    await card.waitFor();
+    await card.getByRole('button', { name: 'Postei hoje' }).click();
+    await page.locator('.bank-card', { hasText: 'Bom dia de trabalho' }).locator('.bank-card__used', { hasText: 'hoje' }).waitFor();
+  });
+
+  await step('aprendizados: importa o caderno do curso e marca como praticado', async () => {
+    await go('#/aprendizados');
+    await expectTitle('Aprendizados');
+    await page.getByRole('button', { name: 'Importar anotações do curso' }).first().click();
+    await page.locator('.learning', { hasText: 'Os 7 princípios do design' }).waitFor();
+    await page.locator('.learning', { hasText: 'Os 7 princípios do design' }).locator('input[type=checkbox]').check();
+    await page.locator('.learning-progress', { hasText: '1 de' }).waitFor();
+    await go('#/painel');
+    await page.locator('.learning-day .learning__title').waitFor();
   });
 
   await step('coordenador registra pedido sem simular IA e sugere encaminhamento', async () => {

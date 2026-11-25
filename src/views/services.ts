@@ -5,6 +5,7 @@ import { cx, html, type SafeHtml } from '../core/html.ts';
 import { formatShortDate } from '../core/dates.ts';
 import { effectivePrice, packageSeparatePrice, promoActive, saveService, serviceIncludes, toggleServiceActive, type ServiceInput } from '../domain/business.ts';
 import { categories, serviceCategoryOptions } from '../domain/categories.ts';
+import { limitsText, serviceLimits } from '../domain/delivery.ts';
 import type { Service, ServiceCategory } from '../domain/types.ts';
 import { allowed, requirePermission, rerender, store, today } from '../app/context.ts';
 import type { View } from '../app/view.ts';
@@ -39,6 +40,16 @@ function openServiceForm(service?: Service, preset: Partial<ServiceInput> = {}):
         </div>
         ${textareaField({ name: 'includes', label: 'O que está incluso', value: v.includes, rows: 5, hint: 'Um item por linha. Em planos e pacotes, vira o checklist do projeto.' })}
         <fieldset class="field promo-fields">
+          <legend class="field__label">Limites do pacote</legend>
+          <div class="form-grid form-grid--4">
+            ${textField({ name: 'includedArts', label: 'Artes incluídas', type: 'number', value: v.includedArts ?? '', placeholder: 'Sem artes' })}
+            ${textField({ name: 'includedRevisions', label: 'Rodadas de ajuste', type: 'number', value: v.includedRevisions ?? '', placeholder: '2' })}
+            ${textField({ name: 'extraArtPrice', label: 'Arte extra (R$)', value: money(v.extraArtPrice), inputmode: 'decimal', placeholder: 'Ex.: 30' })}
+            ${textField({ name: 'extraRevisionPrice', label: 'Ajuste extra (R$)', value: money(v.extraRevisionPrice), inputmode: 'decimal', placeholder: 'Ex.: 50' })}
+          </div>
+          <p class="field__hint">Aparecem escritos na proposta e no contrato. No projeto, um contador avisa quando chega no limite.</p>
+        </fieldset>
+        <fieldset class="field promo-fields">
           <legend class="field__label">Promoção (opcional)</legend>
           <div class="form-grid form-grid--3">
             ${textField({ name: 'promoPrice', label: 'Preço promocional (R$)', value: money(v.promoPrice), inputmode: 'decimal', placeholder: 'Ex.: 350' })}
@@ -62,6 +73,13 @@ function openServiceForm(service?: Service, preset: Partial<ServiceInput> = {}):
   });
 }
 
+function wholeOrNull(text: string, what: string): number | null {
+  if (!text.trim()) return null;
+  const n = Number(text);
+  if (!Number.isInteger(n) || n < 0) throw new Error(`Use um número inteiro em ${what}.`);
+  return n;
+}
+
 registerForms({
   'service:save': async (form, values) => {
     requirePermission('finance:edit');
@@ -81,6 +99,10 @@ registerForms({
       promoUntil: promoPrice === null ? null : values.optional('promoUntil'),
       promoLabel: promoPrice === null ? '' : values.text('promoLabel'),
       packageItems: values.all('packageItems'),
+      includedArts: wholeOrNull(values.text('includedArts'), 'artes incluídas'),
+      includedRevisions: wholeOrNull(values.text('includedRevisions'), 'rodadas de ajuste'),
+      extraArtPrice: parseMoney(values.text('extraArtPrice')),
+      extraRevisionPrice: parseMoney(values.text('extraRevisionPrice')),
     };
     const id = form.dataset.id || null;
     await store().apply((draft) => saveService(draft, id, input));
@@ -132,6 +154,9 @@ function serviceCard(s: Service, canEdit: boolean): SafeHtml {
     ${items.length ? html`<p class="service-card__pack">${icon('layers', 13)} Inclui: ${items.join(' + ')}</p>` : ''}
     ${separate !== null && separate > price ? html`<p class="service-card__save">Separado sairia ${formatCurrency(separate, true)} · economia de ${formatCurrency(separate - price, true)}</p>` : ''}
     ${includes.length ? html`<ul class="bullet-list bullet-list--check">${includes.map((i) => html`<li>${i}</li>`)}</ul>` : html`<p class="muted small">Sem descrição do que está incluso.</p>`}
+    ${s.includedArts != null || s.includedRevisions != null || s.extraArtPrice != null || s.extraRevisionPrice != null
+      ? html`<p class="service-card__limits">${icon('flag', 13)} ${limitsText(serviceLimits(s)).join(' · ')}</p>`
+      : ''}
     <footer class="service-card__foot">
       <span class="muted small">${s.deliveryDays !== null ? html`${icon('clock', 13)} ~${s.deliveryDays} ${s.deliveryDays === 1 ? 'dia útil' : 'dias úteis'}` : s.billing === 'mensal' ? 'Contínuo' : ''}</span>
       ${canEdit
